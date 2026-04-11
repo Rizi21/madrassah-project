@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= pageTitle %></title>
+    <link rel="stylesheet" href="/public/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand-lockup">
+        <% if (tenant.logoPath) { %>
+          <img class="tenant-logo" src="<%= tenant.logoPath %>" alt="<%= tenant.displayName %> logo" />
+        <% } %>
+        <div>
+          <p class="eyebrow"><%= tenant.terminology.parent %> Portal</p>
+          <h1><%= dashboard.organizationName %></h1>
+          <p class="muted">Signed in as <strong><%= user.name %></strong></p>
+        </div>
+      </div>
+      <form method="post" action="/logout">
+        <button class="ghost-button" type="submit">Log out</button>
+      </form>
+    </header>
+
+    <main class="dashboard-shell">
+      <% if (notice) { %>
+        <div class="banner notice"><%= notice %></div>
+      <% } %>
+
+      <% if (error) { %>
+        <div class="banner error"><%= error %></div>
+      <% } %>
+
+      <section class="student-grid">
+        <% dashboard.students.forEach((student) => { %>
+          <article class="student-card">
+            <div class="student-card-header">
+              <div>
+                <h2><%= student.fullName %></h2>
+                <p class="muted">Current lesson: <%= student.currentSurah %> · <%= student.currentAyah %></p>
+              </div>
+              <span class="badge badge-neutral"><%= currencySymbol %><%= student.monthlyFee.toFixed(2) %>/month</span>
+            </div>
+
+            <div class="insight-columns">
+              <div>
+                <h3>Strong points</h3>
+                <ul>
+                  <% (student.strongPoints.length ? student.strongPoints : ["Awaiting more lesson history"]).forEach((item) => { %>
+                    <li><%= item %></li>
+                  <% }) %>
+                </ul>
+              </div>
+              <div>
+                <h3>Weak points</h3>
+                <ul>
+                  <% (student.weakPoints.length ? student.weakPoints : ["Awaiting more lesson history"]).forEach((item) => { %>
+                    <li><%= item %></li>
+                  <% }) %>
+                </ul>
+              </div>
+            </div>
+
+            <div class="detail-block">
+              <h3>Recent attendance</h3>
+              <div class="timeline-list">
+                <% student.attendanceHistory.forEach((item) => { %>
+                  <div class="timeline-item">
+                    <span><%= item.lessonDate %></span>
+                    <strong><%= item.status %></strong>
+                  </div>
+                <% }) %>
+              </div>
+            </div>
+
+            <div class="detail-block">
+              <h3>Recent progress</h3>
+              <div class="timeline-list">
+                <% student.progressEntries.forEach((entry) => { %>
+                  <div class="timeline-item timeline-item-column">
+                    <strong><%= entry.lessonDate %></strong>
+                    <span><strong>Sabak:</strong> <%= entry.sabak %></span>
+                    <span><strong>Sabki:</strong> <%= entry.sabki %></span>
+                    <span><strong>Manzil:</strong> <%= entry.manzil %></span>
+                    <span><strong>Homework:</strong> <%= entry.homework %></span>
+                    <span><strong><%= tenant.terminology.teacher %> note:</strong> <%= entry.note %></span>
+                  </div>
+                <% }) %>
+              </div>
+            </div>
+
+            <div class="detail-block">
+              <h3>Fees</h3>
+              <div class="timeline-list">
+                <% student.fees.forEach((fee) => { %>
+                  <div class="timeline-item timeline-item-column">
+                    <strong><%= fee.feeMonth %></strong>
+                    <span>Status: <%= fee.status %></span>
+                    <span>Amount due: <%= currencySymbol %><%= fee.amountDue.toFixed(2) %></span>
+                    <span>Paid on: <%= fee.paidOn || "Not recorded" %></span>
+                    <span>Note: <%= fee.note %></span>
+                  </div>
+                <% }) %>
+              </div>
+            </div>
+          </article>
+        <% }) %>
+      </section>
+    </main>
+  </body>
+</html>

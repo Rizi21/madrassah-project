@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "tenantId": "makki-masjid",
+  "displayName": "Makki Masjid Manchester",
+  "country": "United Kingdom",
+  "timezone": "Europe/London",
+  "currency": "GBP",
+  "logoPath": "/public/tenants/makki-masjid/logo.svg",
+  "contactNumbers": ["020 7946 0192", "07700 900786"],
+  "terminology": {
+    "teacher": "Ustadh",
+    "parent": "Guardian",
+    "student": "Student",
+    "progress": "Qur'an Progress"
+  },
+  "features": {
+    "fees": true,
+    "parentPortal": true,
+    "homework": true,
+    "quranBookmarks": true,
+    "teacherNotes": true
+  },
+  "attendanceStatuses": ["present", "late", "absent"],
+  "feeDefaults": {
+    "monthlyAmount": 40,
+    "dueDayOfMonth": 1
+  },
+  "demoUsers": {
+    "teacher": {
+      "name": "Ustadh Soban",
+      "email": "soban@makki-masjid.test",
+      "password": "Password123!"
+    },
+    "parent": {
+      "name": "Aisha Khan",
+      "email": "parent@makki-masjid.test",
+      "password": "Password123!"
+    }
+  },
+  "seedStudents": [
+    {
+      "firstName": "Ibrahim",
+      "lastName": "Khan",
+      "currentSurah": "Surah Al-Mulk",
+      "currentAyah": "Ayah 12",
+      "monthlyFee": 40
+    },
+    {
+      "firstName": "Safiyyah",
+      "lastName": "Khan",
+      "currentSurah": "Surah Ya-Sin",
+      "currentAyah": "Ayah 18",
+      "monthlyFee": 40
+    }
+  ],
+  "customFields": {
+    "student": [
+      { "key": "schoolYear", "label": "School Year", "type": "text" },
+      { "key": "secondEmergencyNumber", "label": "Second Emergency Number", "type": "phone" }
+    ]
+  }
+}

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= pageTitle %></title>
+    <link rel="stylesheet" href="/public/styles.css" />
+  </head>
+  <body class="login-shell">
+    <main class="auth-page">
+      <section class="hero-panel">
+        <% if (tenant.logoPath) { %>
+          <img class="tenant-logo tenant-logo-large" src="<%= tenant.logoPath %>" alt="<%= tenant.displayName %> logo" />
+        <% } %>
+        <p class="eyebrow">Madrassah Management</p>
+        <h1><%= tenant.displayName %></h1>
+        <p class="hero-copy">
+          A browser-based portal for <%= tenant.terminology.teacher.toLowerCase() %>s and
+          <%= tenant.terminology.parent.toLowerCase() %>s to manage attendance, Qur'an progress,
+          revision, homework, and fees.
+        </p>
+
+        <div class="feature-grid">
+          <article class="feature-card">
+            <h2>Teacher workflow</h2>
+            <p>Record daily attendance, sabak, sabki, manzil, homework, notes, and fee status.</p>
+          </article>
+          <article class="feature-card">
+            <h2><%= tenant.terminology.parent %> visibility</h2>
+            <p><%= tenant.terminology.parent %>s see their child's recent attendance, progress updates, strengths, and weak points.</p>
+          </article>
+          <article class="feature-card">
+            <h2>Local-first data</h2>
+            <p>SQLite keeps this prototype simple for development before moving to managed Postgres in production.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="login-panel">
+        <div class="panel-header">
+          <p class="eyebrow">Demo access</p>
+          <h2>Sign in</h2>
+        </div>
+
+        <% if (error) { %>
+          <div class="banner error"><%= error %></div>
+        <% } %>
+
+        <% if (notice) { %>
+          <div class="banner notice"><%= notice %></div>
+        <% } %>
+
+        <form method="post" action="/login" class="stack">
+          <label>
+            <span>Email</span>
+            <input type="email" name="email" placeholder="<%= tenant.demoUsers.teacher.email %>" required />
+          </label>
+
+          <label>
+            <span>Password</span>
+            <input type="password" name="password" placeholder="Password123!" required />
+          </label>
+
+          <button class="primary-button" type="submit">Log in</button>
+        </form>
+
+        <div class="credentials">
+          <p><strong><%= tenant.terminology.teacher %>:</strong> <%= tenant.demoUsers.teacher.email %> / <%= tenant.demoUsers.teacher.password %></p>
+          <p><strong><%= tenant.terminology.parent %>:</strong> <%= tenant.demoUsers.parent.email %> / <%= tenant.demoUsers.parent.password %></p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

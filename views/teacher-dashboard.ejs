@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= pageTitle %></title>
+    <link rel="stylesheet" href="/public/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand-lockup">
+        <% if (tenant.logoPath) { %>
+          <img class="tenant-logo" src="<%= tenant.logoPath %>" alt="<%= tenant.displayName %> logo" />
+        <% } %>
+        <div>
+          <p class="eyebrow"><%= tenant.terminology.teacher %> Portal</p>
+          <h1><%= dashboard.organizationName %></h1>
+          <p class="muted">Signed in as <strong><%= user.name %></strong></p>
+        </div>
+      </div>
+      <form method="post" action="/logout">
+        <button class="ghost-button" type="submit">Log out</button>
+      </form>
+    </header>
+
+    <main class="dashboard-shell">
+      <% if (notice) { %>
+        <div class="banner notice"><%= notice %></div>
+      <% } %>
+
+      <% if (error) { %>
+        <div class="banner error"><%= error %></div>
+      <% } %>
+
+      <section class="summary-row">
+        <article class="summary-card">
+          <span>Total students</span>
+          <strong><%= dashboard.students.length %></strong>
+        </article>
+        <article class="summary-card">
+          <span>Low attendance</span>
+          <strong><%= dashboard.students.filter((student) => student.attendanceRate < 80).length %></strong>
+        </article>
+        <article class="summary-card">
+          <span>Fees pending</span>
+          <strong><%= dashboard.students.filter((student) => student.latestFeeStatus !== "paid").length %></strong>
+        </article>
+      </section>
+
+      <section class="forms-grid">
+        <article class="form-card">
+          <h2>Record attendance</h2>
+          <form method="post" action="/teacher/attendance" class="stack">
+            <label>
+              <span>Student</span>
+              <select name="studentId" required>
+                <% dashboard.students.forEach((student) => { %>
+                  <option value="<%= student.id %>"><%= student.fullName %></option>
+                <% }) %>
+              </select>
+            </label>
+            <label>
+              <span>Date</span>
+              <input type="date" name="lessonDate" value="<%= today %>" required />
+            </label>
+            <label>
+              <span>Status</span>
+              <select name="status" required>
+                <% tenant.attendanceStatuses.forEach((status) => { %>
+                  <option value="<%= status %>"><%= status.charAt(0).toUpperCase() + status.slice(1) %></option>
+                <% }) %>
+              </select>
+            </label>
+            <button class="primary-button" type="submit">Save attendance</button>
+          </form>
+        </article>
+
+        <article class="form-card">
+          <h2>Update fee status</h2>
+          <form method="post" action="/teacher/fees" class="stack">
+            <label>
+              <span>Student</span>
+              <select name="studentId" required>
+                <% dashboard.students.forEach((student) => { %>
+                  <option value="<%= student.id %>"><%= student.fullName %></option>
+                <% }) %>
+              </select>
+            </label>
+            <label>
+              <span>Fee month</span>
+              <input type="month" name="feeMonth" value="<%= currentMonth %>" required />
+            </label>
+            <label>
+              <span>Amount due</span>
+              <input type="number" name="amountDue" min="0" step="0.01" value="<%= tenant.feeDefaults.monthlyAmount %>" required />
+            </label>
+            <label>
+              <span>Status</span>
+              <select name="status" required>
+                <option value="paid">Paid</option>
+                <option value="pending">Pending</option>
+                <option value="partial">Partial</option>
+                <option value="overdue">Overdue</option>
+              </select>
+            </label>
+            <label>
+              <span>Paid on</span>
+              <input type="date" name="paidOn" value="<%= today %>" />
+            </label>
+            <label>
+              <span>Notes</span>
+              <textarea name="note" rows="3" required>Monthly fee status updated by teacher.</textarea>
+            </label>
+            <button class="primary-button" type="submit">Save fee status</button>
+          </form>
+        </article>
+      </section>
+
+      <section class="form-card form-card-wide">
+        <h2>Add progress note</h2>
+        <form method="post" action="/teacher/progress" class="stack two-column-form">
+          <label>
+            <span><%= tenant.terminology.student %></span>
+            <select name="studentId" required>
+              <% dashboard.students.forEach((student) => { %>
+                <option value="<%= student.id %>"><%= student.fullName %></option>
+              <% }) %>
+            </select>
+          </label>
+          <label>
+            <span>Date</span>
+            <input type="date" name="lessonDate" value="<%= today %>" required />
+          </label>
+          <label>
+            <span>Sabak</span>
+            <input type="text" name="sabak" placeholder="Surah and ayat covered" required />
+          </label>
+          <label>
+            <span>Sabki</span>
+            <input type="text" name="sabki" placeholder="Recent revision set" required />
+          </label>
+          <label>
+            <span>Manzil</span>
+            <input type="text" name="manzil" placeholder="Long-term revision" required />
+          </label>
+          <label>
+            <span>Homework</span>
+            <input type="text" name="homework" placeholder="What the student should prepare next" required />
+          </label>
+          <label>
+            <span>Strong points</span>
+            <input type="text" name="strengths" placeholder="tajweed, focus, fluency" required />
+          </label>
+          <label>
+            <span>Weak points</span>
+            <input type="text" name="weaknesses" placeholder="confidence, homework consistency" required />
+          </label>
+          <label class="full-span">
+            <span><%= tenant.terminology.teacher %> note</span>
+            <textarea name="note" rows="4" placeholder="Daily lesson notes for the <%= tenant.terminology.parent.toLowerCase() %> and <%= tenant.terminology.teacher.toLowerCase() %> record." required></textarea>
+          </label>
+          <button class="primary-button full-span" type="submit">Save progress note</button>
+        </form>
+      </section>
+
+      <section class="student-grid">
+        <% dashboard.students.forEach((student) => { %>
+          <article class="student-card">
+            <div class="student-card-header">
+              <div>
+                <h2><%= student.fullName %></h2>
+                <p class="muted"><%= student.currentSurah %> · <%= student.currentAyah %></p>
+              </div>
+              <span class="badge badge-neutral"><%= student.attendanceRate %>% attendance</span>
+            </div>
+
+            <div class="metrics-row">
+              <div>
+                <span class="metric-label">Latest attendance</span>
+                <strong><%= student.latestAttendance || "No record" %></strong>
+              </div>
+              <div>
+                <span class="metric-label">Fee status</span>
+                <strong><%= student.latestFeeStatus || "No record" %></strong>
+              </div>
+              <div>
+                <span class="metric-label">Monthly fee</span>
+                <strong><%= currencySymbol %><%= student.monthlyFee.toFixed(2) %></strong>
+              </div>
+            </div>
+
+            <div class="insight-columns">
+              <div>
+                <h3>Strong points</h3>
+                <ul>
+                  <% (student.strongPoints.length ? student.strongPoints : ["Awaiting more lesson history"]).forEach((item) => { %>
+                    <li><%= item %></li>
+                  <% }) %>
+                </ul>
+              </div>
+              <div>
+                <h3>Weak points</h3>
+                <ul>
+                  <% (student.weakPoints.length ? student.weakPoints : ["Awaiting more lesson history"]).forEach((item) => { %>
+                    <li><%= item %></li>
+                  <% }) %>
+                </ul>
+              </div>
+            </div>
+
+            <% if (student.latestProgress) { %>
+              <div class="detail-block">
+                <h3>Latest progress</h3>
+                <p><strong>Date:</strong> <%= student.latestProgress.lessonDate %></p>
+                <p><strong>Sabak:</strong> <%= student.latestProgress.sabak %></p>
+                <p><strong>Sabki:</strong> <%= student.latestProgress.sabki %></p>
+                <p><strong>Manzil:</strong> <%= student.latestProgress.manzil %></p>
+                <p><strong>Homework:</strong> <%= student.latestProgress.homework %></p>
+                <p><strong>Note:</strong> <%= student.latestProgress.note %></p>
+              </div>
+            <% } %>
+          </article>
+        <% }) %>
+      </section>
+    </main>
+  </body>
+</html>

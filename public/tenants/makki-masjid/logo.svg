@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title desc">
+  <title id="title">Makki Masjid logo placeholder</title>
+  <desc id="desc">A simple mosque arch mark used as a placeholder logo.</desc>
+  <rect width="160" height="160" rx="36" fill="#073b40"/>
+  <path d="M80 29c-22 15-36 34-36 58v35h72V87c0-24-14-43-36-58Z" fill="#f6f0e5"/>
+  <path d="M63 122V86c0-11 7-21 17-28 10 7 17 17 17 28v36H63Z" fill="#0d5c63"/>
+  <path d="M39 125h82v10H39z" fill="#d7ecee"/>
+  <circle cx="80" cy="41" r="5" fill="#d7ecee"/>
+</svg>
