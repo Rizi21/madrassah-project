@@ -98,11 +98,11 @@ export interface AdminStudentRow {
   id: number;
   fullName: string;
   classNames: string[];
+  guardianNames: string[];
   currentSurah: string;
   currentAyah: string;
   monthlyFee: number;
   teacherName: string;
-  guardianName: string;
 }
 
 export interface AdminClassGroupRow {

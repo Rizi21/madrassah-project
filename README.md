@@ -20,6 +20,7 @@ The current tenant config is `Makki Masjid Madrassah`.
 - SQLite-backed demo data with seeded users and students
 - Per-masjid JSON config for display name, role labels, contact numbers, logo path, fee defaults, and seed users
 - Admin class/group management for assigning teachers and grouping students
+- Multi-guardian linking so one parent can see multiple children and one child can have multiple guardians
 
 ## Run locally
 

@@ -119,6 +119,17 @@ export function initializeDatabase(tenantConfig: TenantConfig): void {
       FOREIGN KEY (teacher_user_id) REFERENCES users(id)
     );
 
+    CREATE TABLE IF NOT EXISTS student_guardians (
+      student_id INTEGER NOT NULL,
+      guardian_user_id INTEGER NOT NULL,
+      relationship TEXT NOT NULL DEFAULT 'guardian',
+      is_primary INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (student_id, guardian_user_id),
+      FOREIGN KEY (student_id) REFERENCES students(id),
+      FOREIGN KEY (guardian_user_id) REFERENCES users(id)
+    );
+
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       user_id INTEGER NOT NULL,
@@ -201,6 +212,7 @@ export function initializeDatabase(tenantConfig: TenantConfig): void {
   ensureColumn("organizations", "logo_path", "TEXT");
 
   seedDemoData(tenantConfig);
+  backfillStudentGuardians();
 }
 
 function seedDemoData(tenantConfig: TenantConfig): void {
@@ -243,6 +255,10 @@ function seedDemoData(tenantConfig: TenantConfig): void {
   const insertFee = db.prepare(`
     INSERT INTO fees (student_id, fee_month, amount_due, status, paid_on, note)
     VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  const insertStudentGuardian = db.prepare(`
+    INSERT OR IGNORE INTO student_guardians (student_id, guardian_user_id, relationship, is_primary)
+    VALUES (?, ?, ?, ?)
   `);
   const insertClassGroup = db.prepare(`
     INSERT INTO class_groups (organization_id, teacher_user_id, name, description)
@@ -349,6 +365,9 @@ function seedDemoData(tenantConfig: TenantConfig): void {
     return;
   }
 
+  insertStudentGuardian.run(firstStudentId, parentId, "guardian", 1);
+  insertStudentGuardian.run(secondStudentId, parentId, "guardian", 1);
+
   const classGroupId = Number(
     insertClassGroup.run(
       organizationId,
@@ -446,6 +465,14 @@ function seedDemoData(tenantConfig: TenantConfig): void {
     insertFee.run(...entry);
   });
 
+}
+
+function backfillStudentGuardians(): void {
+  db.prepare(`
+    INSERT OR IGNORE INTO student_guardians (student_id, guardian_user_id, relationship, is_primary)
+    SELECT id, guardian_user_id, 'guardian', 1
+    FROM students
+  `).run();
 }
 
 export function validateUserCredentials(email: string, password: string): AuthUser | null {
@@ -753,6 +780,20 @@ function getStudentClassNames(studentId: number): string[] {
   return rows.map((row) => row.name);
 }
 
+function getStudentGuardianNames(studentId: number): string[] {
+  const rows = db
+    .prepare(`
+      SELECT u.name
+      FROM student_guardians sg
+      INNER JOIN users u ON u.id = sg.guardian_user_id
+      WHERE sg.student_id = ?
+      ORDER BY sg.is_primary DESC, u.name
+    `)
+    .all(studentId) as Array<{ name: string }>;
+
+  return rows.map((row) => row.name);
+}
+
 export function getTeacherDashboardData(teacherId: number, organizationId: number): TeacherDashboardData {
   const organization = getOrganizationDetails(organizationId);
   const classGroups = db
@@ -839,17 +880,18 @@ export function getParentDashboardData(parentId: number, organizationId: number)
   const studentRows = db
     .prepare(`
       SELECT
-        id,
-        first_name AS firstName,
-        last_name AS lastName,
-        current_surah AS currentSurah,
-        current_ayah AS currentAyah,
-        monthly_fee AS monthlyFee
-      FROM students
-      WHERE guardian_user_id = ?
-      ORDER BY first_name, last_name
+        s.id,
+        s.first_name AS firstName,
+        s.last_name AS lastName,
+        s.current_surah AS currentSurah,
+        s.current_ayah AS currentAyah,
+        s.monthly_fee AS monthlyFee
+      FROM students s
+      INNER JOIN student_guardians sg ON sg.student_id = s.id
+      WHERE sg.guardian_user_id = ? AND s.organization_id = ?
+      ORDER BY s.first_name, s.last_name
     `)
-    .all(parentId) as Array<{
+    .all(parentId, organizationId) as Array<{
     id: number;
     firstName: string;
     lastName: string;
@@ -926,11 +968,9 @@ export function getAdminDashboardData(organizationId: number): AdminDashboardDat
         s.current_surah AS currentSurah,
         s.current_ayah AS currentAyah,
         s.monthly_fee AS monthlyFee,
-        teacher.name AS teacherName,
-        guardian.name AS guardianName
+        teacher.name AS teacherName
       FROM students s
       INNER JOIN users teacher ON teacher.id = s.teacher_user_id
-      INNER JOIN users guardian ON guardian.id = s.guardian_user_id
       WHERE s.organization_id = ?
       ORDER BY s.first_name, s.last_name
     `)
@@ -956,6 +996,7 @@ export function getAdminDashboardData(organizationId: number): AdminDashboardDat
   const studentsWithClasses = students.map((student) => ({
     ...student,
     classNames: getStudentClassNames(student.id),
+    guardianNames: getStudentGuardianNames(student.id),
   }));
 
   return {
@@ -1033,22 +1074,59 @@ export function createStudent(input: {
     throw new Error("Selected teacher does not belong to this masjid.");
   }
 
+  const transaction = db.transaction(() => {
+    const studentInfo = db.prepare(`
+      INSERT INTO students (
+        organization_id, guardian_user_id, teacher_user_id,
+        first_name, last_name, current_surah, current_ayah, monthly_fee
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      input.organizationId,
+      input.guardianUserId,
+      input.teacherUserId,
+      input.firstName,
+      input.lastName,
+      input.currentSurah,
+      input.currentAyah,
+      input.monthlyFee,
+    );
+
+    db.prepare(`
+      INSERT OR IGNORE INTO student_guardians (student_id, guardian_user_id, relationship, is_primary)
+      VALUES (?, ?, ?, ?)
+    `).run(Number(studentInfo.lastInsertRowid), input.guardianUserId, "guardian", 1);
+  });
+
+  transaction();
+}
+
+export function assignGuardianToStudent(input: {
+  organizationId: number;
+  studentId: number;
+  guardianUserId: number;
+  relationship: string;
+}): void {
+  if (!userBelongsToOrganization(input.guardianUserId, input.organizationId, "parent")) {
+    throw new Error("Selected guardian does not belong to this masjid.");
+  }
+
+  const student = db
+    .prepare(`
+      SELECT id
+      FROM students
+      WHERE id = ? AND organization_id = ?
+    `)
+    .get(input.studentId, input.organizationId) as { id: number } | undefined;
+
+  if (!student) {
+    throw new Error("Student was not found for this masjid.");
+  }
+
   db.prepare(`
-    INSERT INTO students (
-      organization_id, guardian_user_id, teacher_user_id,
-      first_name, last_name, current_surah, current_ayah, monthly_fee
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    input.organizationId,
-    input.guardianUserId,
-    input.teacherUserId,
-    input.firstName,
-    input.lastName,
-    input.currentSurah,
-    input.currentAyah,
-    input.monthlyFee,
-  );
+    INSERT OR IGNORE INTO student_guardians (student_id, guardian_user_id, relationship, is_primary)
+    VALUES (?, ?, ?, ?)
+  `).run(input.studentId, input.guardianUserId, input.relationship || "guardian", 0);
 }
 
 export function createClassGroup(input: {

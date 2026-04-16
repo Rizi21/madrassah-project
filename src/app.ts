@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import {
   addProgressEntry,
+  assignGuardianToStudent,
   approvePendingUser,
   assignStudentToClass,
   createClassGroup,
@@ -377,6 +378,37 @@ export function createApp() {
     }
 
     return res.redirect("/admin/dashboard?notice=Student created.");
+  });
+
+  app.post("/admin/students/:studentId/guardians", requireRole("admin"), (req: Request, res: Response) => {
+    const schema = z.object({
+      studentId: z.coerce.number().int().positive(),
+      guardianUserId: z.coerce.number().int().positive(),
+      relationship: z.string().min(2).max(40).default("guardian"),
+    });
+
+    const result = schema.safeParse({
+      studentId: req.params.studentId,
+      guardianUserId: req.body.guardianUserId,
+      relationship: req.body.relationship || "guardian",
+    });
+
+    if (!result.success) {
+      return res.redirect("/admin/dashboard?error=Guardian link details were invalid.");
+    }
+
+    try {
+      assignGuardianToStudent({
+        organizationId: req.user!.organizationId,
+        studentId: result.data.studentId,
+        guardianUserId: result.data.guardianUserId,
+        relationship: result.data.relationship,
+      });
+    } catch (error) {
+      return res.redirect(`/admin/dashboard?error=${encodeURIComponent((error as Error).message)}`);
+    }
+
+    return res.redirect("/admin/dashboard?notice=Guardian linked to student.");
   });
 
   app.post("/admin/classes", requireRole("admin"), (req: Request, res: Response) => {
