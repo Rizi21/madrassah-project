@@ -38,14 +38,26 @@
           <strong><%= dashboard.students.length %></strong>
         </article>
         <article class="summary-card">
+          <span>Classes</span>
+          <strong><%= dashboard.classGroups.length %></strong>
+        </article>
+        <article class="summary-card">
           <span>Low attendance</span>
           <strong><%= dashboard.students.filter((student) => student.attendanceRate < 80).length %></strong>
         </article>
-        <article class="summary-card">
-          <span>Fees pending</span>
-          <strong><%= dashboard.students.filter((student) => student.latestFeeStatus !== "paid").length %></strong>
-        </article>
       </section>
+
+      <% if (dashboard.classGroups.length > 0) { %>
+        <section class="forms-grid">
+          <% dashboard.classGroups.forEach((classGroup) => { %>
+            <article class="summary-card">
+              <span><%= classGroup.studentCount %> students</span>
+              <strong><%= classGroup.name %></strong>
+              <p class="muted"><%= classGroup.description || "No class description" %></p>
+            </article>
+          <% }) %>
+        </section>
+      <% } %>
 
       <section class="forms-grid">
         <article class="form-card">
@@ -170,6 +182,7 @@
               <div>
                 <h2><%= student.fullName %></h2>
                 <p class="muted"><%= student.currentSurah %> · <%= student.currentAyah %></p>
+                <p class="muted"><%= student.classNames.length ? student.classNames.join(", ") : "No class assigned" %></p>
               </div>
               <span class="badge badge-neutral"><%= student.attendanceRate %>% attendance</span>
             </div>

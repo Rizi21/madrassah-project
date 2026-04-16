@@ -6,6 +6,8 @@ import { z } from "zod";
 import {
   addProgressEntry,
   approvePendingUser,
+  assignStudentToClass,
+  createClassGroup,
   createPasswordResetToken,
   createOrganizationUser,
   createSession,
@@ -375,6 +377,61 @@ export function createApp() {
     }
 
     return res.redirect("/admin/dashboard?notice=Student created.");
+  });
+
+  app.post("/admin/classes", requireRole("admin"), (req: Request, res: Response) => {
+    const schema = z.object({
+      name: z.string().min(2),
+      description: z.string().optional(),
+      teacherUserId: z.coerce.number().int().positive(),
+    });
+
+    const result = schema.safeParse(req.body);
+
+    if (!result.success) {
+      return res.redirect("/admin/dashboard?error=Class details were invalid.");
+    }
+
+    try {
+      createClassGroup({
+        organizationId: req.user!.organizationId,
+        teacherUserId: result.data.teacherUserId,
+        name: result.data.name,
+        description: result.data.description ?? "",
+      });
+    } catch (error) {
+      return res.redirect(`/admin/dashboard?error=${encodeURIComponent((error as Error).message)}`);
+    }
+
+    return res.redirect("/admin/dashboard?notice=Class created.");
+  });
+
+  app.post("/admin/classes/:classGroupId/students", requireRole("admin"), (req: Request, res: Response) => {
+    const schema = z.object({
+      classGroupId: z.coerce.number().int().positive(),
+      studentId: z.coerce.number().int().positive(),
+    });
+
+    const result = schema.safeParse({
+      classGroupId: req.params.classGroupId,
+      studentId: req.body.studentId,
+    });
+
+    if (!result.success) {
+      return res.redirect("/admin/dashboard?error=Class assignment was invalid.");
+    }
+
+    try {
+      assignStudentToClass({
+        organizationId: req.user!.organizationId,
+        classGroupId: result.data.classGroupId,
+        studentId: result.data.studentId,
+      });
+    } catch (error) {
+      return res.redirect(`/admin/dashboard?error=${encodeURIComponent((error as Error).message)}`);
+    }
+
+    return res.redirect("/admin/dashboard?notice=Student assigned to class.");
   });
 
   app.get("/teacher/dashboard", requireRole("teacher"), (req: Request, res: Response) => {

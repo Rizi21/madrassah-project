@@ -11,6 +11,7 @@ The current tenant config is `Makki Masjid Madrassah`.
   - Qur'an lesson progress notes
   - sabak, sabki, manzil, and homework tracking
   - fee status updates
+  - assigned class/group visibility
   - basic strong-point and weak-point summaries
 - Parent dashboard for:
   - attendance visibility
@@ -18,6 +19,7 @@ The current tenant config is `Makki Masjid Madrassah`.
   - fee visibility
 - SQLite-backed demo data with seeded users and students
 - Per-masjid JSON config for display name, role labels, contact numbers, logo path, fee defaults, and seed users
+- Admin class/group management for assigning teachers and grouping students
 
 ## Run locally
 
