@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= pageTitle %></title>
+    <link rel="stylesheet" href="/public/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand-lockup">
+        <% if (tenant.logoPath) { %>
+          <img class="tenant-logo" src="<%= tenant.logoPath %>" alt="<%= tenant.displayName %> logo" />
+        <% } %>
+        <div>
+          <p class="eyebrow">Masjid Admin</p>
+          <h1><%= dashboard.organizationName %></h1>
+          <p class="muted">Signed in as <strong><%= user.name %></strong></p>
+        </div>
+      </div>
+      <form method="post" action="/logout">
+        <button class="ghost-button" type="submit">Log out</button>
+      </form>
+    </header>
+
+    <main class="dashboard-shell">
+      <% if (notice) { %>
+        <div class="banner notice"><%= notice %></div>
+      <% } %>
+
+      <% if (error) { %>
+        <div class="banner error"><%= error %></div>
+      <% } %>
+
+      <section class="summary-row">
+        <article class="summary-card">
+          <span>Users</span>
+          <strong><%= dashboard.users.length %></strong>
+        </article>
+        <article class="summary-card">
+          <span>Pending approval</span>
+          <strong><%= dashboard.pendingUsers.length %></strong>
+        </article>
+        <article class="summary-card">
+          <span><%= tenant.terminology.teacher %>s</span>
+          <strong><%= dashboard.teachers.length %></strong>
+        </article>
+      </section>
+
+      <% if (dashboard.pendingUsers.length > 0) { %>
+        <section class="form-card form-card-wide">
+          <h2>Pending signups</h2>
+          <p class="muted">Approve people who signed up with the masjid code and assign their correct role.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Assign role</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% dashboard.pendingUsers.forEach((account) => { %>
+                  <tr>
+                    <td><%= account.name %></td>
+                    <td><%= account.email %></td>
+                    <td>
+                      <form method="post" action="/admin/users/<%= account.id %>/approve" class="inline-form">
+                        <select name="role" required>
+                          <option value="teacher"><%= tenant.terminology.teacher %></option>
+                          <option value="parent"><%= tenant.terminology.parent %></option>
+                          <option value="admin">Admin</option>
+                        </select>
+                        <button class="primary-button" type="submit">Approve</button>
+                      </form>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      <% } %>
+
+      <section class="forms-grid">
+        <article class="form-card">
+          <h2>Create user</h2>
+          <p class="muted">Create admin, <%= tenant.terminology.teacher.toLowerCase() %>, or <%= tenant.terminology.parent.toLowerCase() %> accounts for this masjid.</p>
+          <form method="post" action="/admin/users" class="stack">
+            <label>
+              <span>Name</span>
+              <input type="text" name="name" placeholder="Full name" required />
+            </label>
+            <label>
+              <span>Email</span>
+              <input type="email" name="email" placeholder="name@example.com" required />
+            </label>
+            <label>
+              <span>Role</span>
+              <select name="role" required>
+                <option value="teacher"><%= tenant.terminology.teacher %></option>
+                <option value="parent"><%= tenant.terminology.parent %></option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+            <label>
+              <span>Initial password</span>
+              <input type="password" name="password" value="Password123!" required />
+            </label>
+            <button class="primary-button" type="submit">Create user</button>
+          </form>
+        </article>
+
+        <article class="form-card">
+          <h2>Create student</h2>
+          <p class="muted">Link each student to one <%= tenant.terminology.teacher.toLowerCase() %> and one <%= tenant.terminology.parent.toLowerCase() %>.</p>
+          <% if (dashboard.teachers.length === 0 || dashboard.guardians.length === 0) { %>
+            <div class="banner error">Create at least one <%= tenant.terminology.teacher.toLowerCase() %> and one <%= tenant.terminology.parent.toLowerCase() %> first.</div>
+          <% } else { %>
+            <form method="post" action="/admin/students" class="stack">
+              <label>
+                <span>First name</span>
+                <input type="text" name="firstName" required />
+              </label>
+              <label>
+                <span>Last name</span>
+                <input type="text" name="lastName" required />
+              </label>
+              <label>
+                <span><%= tenant.terminology.teacher %></span>
+                <select name="teacherUserId" required>
+                  <% dashboard.teachers.forEach((teacher) => { %>
+                    <option value="<%= teacher.id %>"><%= teacher.name %></option>
+                  <% }) %>
+                </select>
+              </label>
+              <label>
+                <span><%= tenant.terminology.parent %></span>
+                <select name="guardianUserId" required>
+                  <% dashboard.guardians.forEach((guardian) => { %>
+                    <option value="<%= guardian.id %>"><%= guardian.name %></option>
+                  <% }) %>
+                </select>
+              </label>
+              <label>
+                <span>Current surah</span>
+                <input type="text" name="currentSurah" placeholder="Surah Al-Mulk" required />
+              </label>
+              <label>
+                <span>Current ayah</span>
+                <input type="text" name="currentAyah" placeholder="Ayah 1" required />
+              </label>
+              <label>
+                <span>Monthly fee</span>
+                <input type="number" name="monthlyFee" min="0" step="0.01" value="<%= tenant.feeDefaults.monthlyAmount %>" required />
+              </label>
+              <button class="primary-button" type="submit">Create student</button>
+            </form>
+          <% } %>
+        </article>
+      </section>
+
+      <section class="forms-grid">
+        <article class="form-card">
+          <h2>Users</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% dashboard.users.filter((account) => account.role !== "pending").forEach((account) => { %>
+                  <tr>
+                    <td><%= account.name %></td>
+                    <td><%= account.email %></td>
+                    <td><span class="badge badge-neutral"><%= account.role %></span></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="form-card">
+          <h2>Students</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th><%= tenant.terminology.teacher %></th>
+                  <th><%= tenant.terminology.parent %></th>
+                  <th>Fee</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% dashboard.students.forEach((student) => { %>
+                  <tr>
+                    <td>
+                      <strong><%= student.fullName %></strong>
+                      <span class="table-subtext"><%= student.currentSurah %> · <%= student.currentAyah %></span>
+                    </td>
+                    <td><%= student.teacherName %></td>
+                    <td><%= student.guardianName %></td>
+                    <td><%= currencySymbol %><%= student.monthlyFee.toFixed(2) %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

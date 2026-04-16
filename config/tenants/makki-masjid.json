@@ -2,6 +2,8 @@
   "schemaVersion": 1,
   "tenantId": "makki-masjid",
   "displayName": "Makki Masjid Manchester",
+  "masjidCode": "MAKKI-MCR",
+  "adminSignupCode": "MAKKI-ADMIN-SETUP",
   "country": "United Kingdom",
   "timezone": "Europe/London",
   "currency": "GBP",
@@ -26,6 +28,11 @@
     "dueDayOfMonth": 1
   },
   "demoUsers": {
+    "admin": {
+      "name": "Makki Masjid Admin",
+      "email": "admin@makki-masjid.test",
+      "password": "Password123!"
+    },
     "teacher": {
       "name": "Ustadh Soban",
       "email": "soban@makki-masjid.test",

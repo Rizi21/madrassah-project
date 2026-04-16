@@ -12,6 +12,8 @@ const tenantConfigSchema = z.object({
   schemaVersion: z.literal(1),
   tenantId: z.string().regex(/^[a-z0-9-]+$/),
   displayName: z.string().min(2),
+  masjidCode: z.string().min(4),
+  adminSignupCode: z.string().min(8),
   country: z.string().min(2),
   timezone: z.string().min(2),
   currency: z.string().length(3),
@@ -56,6 +58,7 @@ const tenantConfigSchema = z.object({
       dueDayOfMonth: 1,
     }),
   demoUsers: z.object({
+    admin: userSchema,
     teacher: userSchema,
     parent: userSchema,
   }),

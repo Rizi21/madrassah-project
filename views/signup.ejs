@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= pageTitle %></title>
+    <link rel="stylesheet" href="/public/styles.css" />
+  </head>
+  <body class="login-shell">
+    <main class="center-panel">
+      <% if (tenant.logoPath) { %>
+        <img class="tenant-logo tenant-logo-large" src="<%= tenant.logoPath %>" alt="<%= tenant.displayName %> logo" />
+      <% } %>
+      <p class="eyebrow">Create account</p>
+      <h1>Join <%= tenant.displayName %></h1>
+      <p class="hero-copy">Use the masjid code for a normal account. Use the admin setup code only for approved masjid admins.</p>
+
+      <% if (error) { %>
+        <div class="banner error"><%= error %></div>
+      <% } %>
+
+      <form method="post" action="/signup" class="stack">
+        <label>
+          <span>Account type</span>
+          <select name="accountType" required>
+            <option value="user">Teacher or guardian awaiting approval</option>
+            <option value="admin">Masjid admin setup</option>
+          </select>
+        </label>
+        <label>
+          <span>Name</span>
+          <input type="text" name="name" required />
+        </label>
+        <label>
+          <span>Email</span>
+          <input type="email" name="email" required />
+        </label>
+        <label>
+          <span>Masjid code</span>
+          <input type="text" name="masjidCode" placeholder="<%= tenant.masjidCode %>" />
+        </label>
+        <label>
+          <span>Admin setup code</span>
+          <input type="text" name="adminSignupCode" placeholder="Only for masjid admins" />
+        </label>
+        <label>
+          <span>Password</span>
+          <input type="password" name="password" required />
+        </label>
+        <label>
+          <span>Confirm password</span>
+          <input type="password" name="confirmPassword" required />
+        </label>
+        <button class="primary-button" type="submit">Create account</button>
+      </form>
+
+      <p class="auth-links"><a href="/">Back to login</a></p>
+    </main>
+  </body>
+</html>

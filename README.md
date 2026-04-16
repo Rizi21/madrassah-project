@@ -30,8 +30,20 @@ Open `http://localhost:3000`
 
 ## Demo users
 
+- Admin: `admin@makki-masjid.test` / `Password123!`
 - Ustadh: `soban@makki-masjid.test` / `Password123!`
 - Guardian: `parent@makki-masjid.test` / `Password123!`
+
+## Signup and approval
+
+- Masjid code: `MAKKI-MCR`
+- Admin setup code: `MAKKI-ADMIN-SETUP`
+
+Normal users sign up with the masjid code and start as `pending`. They cannot log in until a masjid admin approves them and assigns `teacher`, `parent`, or `admin`.
+
+Admins can sign up with the admin setup code. For production, this should become a one-time invite or controlled onboarding flow.
+
+Password reset is available from the login page. In this local MVP, the reset link is shown on screen instead of being emailed.
 
 ## Masjid config
 

@@ -1,4 +1,4 @@
-export type UserRole = "teacher" | "parent" | "admin";
+export type UserRole = "pending" | "teacher" | "parent" | "admin";
 
 export type AttendanceStatus = "present" | "late" | "absent";
 
@@ -76,4 +76,31 @@ export interface ParentDashboardData {
   organizationName: string;
   currency: string;
   students: ParentStudentView[];
+}
+
+export interface AdminUserRow {
+  id: number;
+  name: string;
+  email: string;
+  role: UserRole;
+}
+
+export interface AdminStudentRow {
+  id: number;
+  fullName: string;
+  currentSurah: string;
+  currentAyah: string;
+  monthlyFee: number;
+  teacherName: string;
+  guardianName: string;
+}
+
+export interface AdminDashboardData {
+  organizationName: string;
+  currency: string;
+  users: AdminUserRow[];
+  pendingUsers: AdminUserRow[];
+  teachers: AdminUserRow[];
+  guardians: AdminUserRow[];
+  students: AdminStudentRow[];
 }
