@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= pageTitle %></title>
+    <link rel="stylesheet" href="/public/styles.css" />
+  </head>
+  <body class="login-shell">
+    <main class="center-panel">
+      <% if (tenant.logoPath) { %>
+        <img class="tenant-logo tenant-logo-large" src="<%= tenant.logoPath %>" alt="<%= tenant.displayName %> logo" />
+      <% } %>
+      <p class="eyebrow">Awaiting approval</p>
+      <h1>Your account is pending</h1>
+      <% if (notice) { %>
+        <div class="banner notice"><%= notice %></div>
+      <% } %>
+      <p class="hero-copy">A masjid admin needs to approve your account and assign your role before you can access the portal.</p>
+      <a class="primary-button link-button" href="/">Return to login</a>
+    </main>
+  </body>
+</html>

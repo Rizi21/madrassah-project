@@ -5,6 +5,8 @@ import bcrypt from "bcryptjs";
 import Database from "better-sqlite3";
 
 import type {
+  AdminDashboardData,
+  AdminUserRow,
   AttendanceStatus,
   AuthUser,
   FeeStatus,
@@ -13,6 +15,7 @@ import type {
   StudentSummary,
   TeacherDashboardData,
   TeacherStudentCard,
+  UserRole,
 } from "./types.js";
 import type { TenantConfig } from "./tenant-config.js";
 
@@ -81,6 +84,8 @@ export function initializeDatabase(tenantConfig: TenantConfig): void {
     CREATE TABLE IF NOT EXISTS organizations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tenant_key TEXT,
+      masjid_code TEXT,
+      admin_signup_code TEXT,
       name TEXT NOT NULL,
       country TEXT NOT NULL,
       timezone TEXT NOT NULL,
@@ -158,9 +163,20 @@ export function initializeDatabase(tenantConfig: TenantConfig): void {
       UNIQUE(student_id, fee_month),
       FOREIGN KEY (student_id) REFERENCES students(id)
     );
+
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      token TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
   `);
 
   ensureColumn("organizations", "tenant_key", "TEXT");
+  ensureColumn("organizations", "masjid_code", "TEXT");
+  ensureColumn("organizations", "admin_signup_code", "TEXT");
   ensureColumn("organizations", "logo_path", "TEXT");
 
   seedDemoData(tenantConfig);
@@ -168,12 +184,12 @@ export function initializeDatabase(tenantConfig: TenantConfig): void {
 
 function seedDemoData(tenantConfig: TenantConfig): void {
   const insertOrganization = db.prepare(`
-    INSERT INTO organizations (tenant_key, name, country, timezone, currency, logo_path)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO organizations (tenant_key, masjid_code, admin_signup_code, name, country, timezone, currency, logo_path)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const updateOrganization = db.prepare(`
     UPDATE organizations
-    SET tenant_key = ?, name = ?, country = ?, timezone = ?, currency = ?, logo_path = ?
+    SET tenant_key = ?, masjid_code = ?, admin_signup_code = ?, name = ?, country = ?, timezone = ?, currency = ?, logo_path = ?
     WHERE id = ?
   `);
   const insertUser = db.prepare(`
@@ -208,6 +224,7 @@ function seedDemoData(tenantConfig: TenantConfig): void {
     VALUES (?, ?, ?, ?, ?, ?)
   `);
 
+  const configuredAdminPassword = bcrypt.hashSync(tenantConfig.demoUsers.admin.password, 10);
   const configuredTeacherPassword = bcrypt.hashSync(tenantConfig.demoUsers.teacher.password, 10);
   const configuredParentPassword = bcrypt.hashSync(tenantConfig.demoUsers.parent.password, 10);
 
@@ -220,6 +237,8 @@ function seedDemoData(tenantConfig: TenantConfig): void {
     : Number(
         insertOrganization.run(
           tenantConfig.tenantId,
+          tenantConfig.masjidCode,
+          tenantConfig.adminSignupCode,
           tenantConfig.displayName,
           tenantConfig.country,
           tenantConfig.timezone,
@@ -230,6 +249,8 @@ function seedDemoData(tenantConfig: TenantConfig): void {
 
   updateOrganization.run(
     tenantConfig.tenantId,
+    tenantConfig.masjidCode,
+    tenantConfig.adminSignupCode,
     tenantConfig.displayName,
     tenantConfig.country,
     tenantConfig.timezone,
@@ -238,7 +259,7 @@ function seedDemoData(tenantConfig: TenantConfig): void {
     organizationId,
   );
 
-  function upsertDemoUser(role: "teacher" | "parent", name: string, email: string, password: string): number {
+  function upsertDemoUser(role: UserRole, name: string, email: string, password: string): number {
     const existingUser = db
       .prepare("SELECT id FROM users WHERE lower(email) = lower(?) LIMIT 1")
       .get(email) as { id: number } | undefined;
@@ -251,6 +272,12 @@ function seedDemoData(tenantConfig: TenantConfig): void {
     return Number(insertUser.run(organizationId, role, name, email, password).lastInsertRowid);
   }
 
+  upsertDemoUser(
+    "admin",
+    tenantConfig.demoUsers.admin.name,
+    tenantConfig.demoUsers.admin.email,
+    configuredAdminPassword,
+  );
   const teacherId = upsertDemoUser(
     "teacher",
     tenantConfig.demoUsers.teacher.name,
@@ -402,6 +429,10 @@ export function validateUserCredentials(email: string, password: string): AuthUs
     return null;
   }
 
+  if (row.role === "pending") {
+    return null;
+  }
+
   return {
     id: row.id,
     organizationId: row.organizationId,
@@ -425,6 +456,53 @@ export function createSession(userId: number): string {
 
 export function destroySession(sessionId: string): void {
   db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+}
+
+export function createPasswordResetToken(email: string): string | null {
+  const user = db
+    .prepare("SELECT id FROM users WHERE lower(email) = lower(?) LIMIT 1")
+    .get(email) as { id: number } | undefined;
+
+  if (!user) {
+    return null;
+  }
+
+  const token = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 30).toISOString();
+
+  db.prepare(`
+    INSERT INTO password_reset_tokens (token, user_id, expires_at)
+    VALUES (?, ?, ?)
+  `).run(token, user.id, expiresAt);
+
+  return token;
+}
+
+export function resetPasswordWithToken(token: string, password: string): void {
+  const row = db
+    .prepare(`
+      SELECT token, user_id AS userId
+      FROM password_reset_tokens
+      WHERE token = ? AND used_at IS NULL AND expires_at >= ?
+      LIMIT 1
+    `)
+    .get(token, new Date().toISOString()) as { token: string; userId: number } | undefined;
+
+  if (!row) {
+    throw new Error("Password reset link is invalid or expired.");
+  }
+
+  const passwordHash = bcrypt.hashSync(password, 10);
+  const transaction = db.transaction(() => {
+    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, row.userId);
+    db.prepare("UPDATE password_reset_tokens SET used_at = ? WHERE token = ?").run(
+      new Date().toISOString(),
+      row.token,
+    );
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(row.userId);
+  });
+
+  transaction();
 }
 
 export function getUserForSession(sessionId: string | undefined): AuthUser | null {
@@ -452,6 +530,86 @@ function getOrganizationDetails(organizationId: number): { name: string; currenc
     .get(organizationId) as { name: string; currency: string };
 
   return row;
+}
+
+function getOrganizationByMasjidCode(masjidCode: string): { id: number } | null {
+  const row = db
+    .prepare(`
+      SELECT id
+      FROM organizations
+      WHERE upper(masjid_code) = upper(?)
+      LIMIT 1
+    `)
+    .get(masjidCode.trim()) as { id: number } | undefined;
+
+  return row ?? null;
+}
+
+function getOrganizationByAdminSignupCode(adminSignupCode: string): { id: number } | null {
+  const row = db
+    .prepare(`
+      SELECT id
+      FROM organizations
+      WHERE admin_signup_code = ?
+      LIMIT 1
+    `)
+    .get(adminSignupCode.trim()) as { id: number } | undefined;
+
+  return row ?? null;
+}
+
+export function registerWithMasjidCode(input: {
+  name: string;
+  email: string;
+  password: string;
+  masjidCode: string;
+}): void {
+  const organization = getOrganizationByMasjidCode(input.masjidCode);
+
+  if (!organization) {
+    throw new Error("Masjid code was not recognised.");
+  }
+
+  createOrganizationUser({
+    organizationId: organization.id,
+    role: "pending",
+    name: input.name,
+    email: input.email,
+    password: input.password,
+  });
+}
+
+export function registerAdminWithSetupCode(input: {
+  name: string;
+  email: string;
+  password: string;
+  adminSignupCode: string;
+}): void {
+  const organization = getOrganizationByAdminSignupCode(input.adminSignupCode);
+
+  if (!organization) {
+    throw new Error("Admin setup code was not recognised.");
+  }
+
+  createOrganizationUser({
+    organizationId: organization.id,
+    role: "admin",
+    name: input.name,
+    email: input.email,
+    password: input.password,
+  });
+}
+
+function userBelongsToOrganization(userId: number, organizationId: number, role?: UserRole): boolean {
+  const row = db
+    .prepare(`
+      SELECT id
+      FROM users
+      WHERE id = ? AND organization_id = ? AND (? IS NULL OR role = ?)
+    `)
+    .get(userId, organizationId, role ?? null, role ?? null) as { id: number } | undefined;
+
+  return Boolean(row);
 }
 
 function getLatestAttendance(studentId: number): AttendanceStatus | null {
@@ -665,6 +823,134 @@ export function getParentDashboardData(parentId: number, organizationId: number)
     currency: organization.currency,
     students,
   };
+}
+
+export function getAdminDashboardData(organizationId: number): AdminDashboardData {
+  const organization = getOrganizationDetails(organizationId);
+  const users = db
+    .prepare(`
+      SELECT id, name, email, role
+      FROM users
+      WHERE organization_id = ?
+      ORDER BY
+        CASE role
+          WHEN 'admin' THEN 1
+          WHEN 'teacher' THEN 2
+          WHEN 'parent' THEN 3
+          ELSE 4
+        END,
+        name
+    `)
+    .all(organizationId) as AdminUserRow[];
+
+  const students = db
+    .prepare(`
+      SELECT
+        s.id,
+        s.first_name || ' ' || s.last_name AS fullName,
+        s.current_surah AS currentSurah,
+        s.current_ayah AS currentAyah,
+        s.monthly_fee AS monthlyFee,
+        teacher.name AS teacherName,
+        guardian.name AS guardianName
+      FROM students s
+      INNER JOIN users teacher ON teacher.id = s.teacher_user_id
+      INNER JOIN users guardian ON guardian.id = s.guardian_user_id
+      WHERE s.organization_id = ?
+      ORDER BY s.first_name, s.last_name
+    `)
+    .all(organizationId) as AdminDashboardData["students"];
+
+  return {
+    organizationName: organization.name,
+    currency: organization.currency,
+    users,
+    pendingUsers: users.filter((user) => user.role === "pending"),
+    teachers: users.filter((user) => user.role === "teacher"),
+    guardians: users.filter((user) => user.role === "parent"),
+    students,
+  };
+}
+
+export function approvePendingUser(input: {
+  organizationId: number;
+  userId: number;
+  role: Exclude<UserRole, "pending">;
+}): void {
+  const result = db
+    .prepare(`
+      UPDATE users
+      SET role = ?
+      WHERE id = ? AND organization_id = ? AND role = 'pending'
+    `)
+    .run(input.role, input.userId, input.organizationId);
+
+  if (result.changes === 0) {
+    throw new Error("Pending user was not found for this masjid.");
+  }
+}
+
+export function createOrganizationUser(input: {
+  organizationId: number;
+  role: UserRole;
+  name: string;
+  email: string;
+  password: string;
+}): void {
+  if (!["admin", "teacher", "parent", "pending"].includes(input.role)) {
+    throw new Error("Unsupported user role.");
+  }
+
+  const passwordHash = bcrypt.hashSync(input.password, 10);
+
+  try {
+    db.prepare(`
+      INSERT INTO users (organization_id, role, name, email, password_hash)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(input.organizationId, input.role, input.name, input.email, passwordHash);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("UNIQUE")) {
+      throw new Error("A user with that email already exists.");
+    }
+
+    throw error;
+  }
+}
+
+export function createStudent(input: {
+  organizationId: number;
+  guardianUserId: number;
+  teacherUserId: number;
+  firstName: string;
+  lastName: string;
+  currentSurah: string;
+  currentAyah: string;
+  monthlyFee: number;
+}): void {
+  if (!userBelongsToOrganization(input.guardianUserId, input.organizationId, "parent")) {
+    throw new Error("Selected guardian does not belong to this masjid.");
+  }
+
+  if (!userBelongsToOrganization(input.teacherUserId, input.organizationId, "teacher")) {
+    throw new Error("Selected teacher does not belong to this masjid.");
+  }
+
+  db.prepare(`
+    INSERT INTO students (
+      organization_id, guardian_user_id, teacher_user_id,
+      first_name, last_name, current_surah, current_ayah, monthly_fee
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    input.organizationId,
+    input.guardianUserId,
+    input.teacherUserId,
+    input.firstName,
+    input.lastName,
+    input.currentSurah,
+    input.currentAyah,
+    input.monthlyFee,
+  );
 }
 
 function studentBelongsToTeacher(studentId: number, teacherId: number): boolean {
