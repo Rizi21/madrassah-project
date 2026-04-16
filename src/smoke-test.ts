@@ -55,6 +55,36 @@ async function run() {
   assert.equal(assignStudent.status, 302);
   assert.equal(assignStudent.headers.location, "/admin/dashboard?notice=Student%20assigned%20to%20class.");
 
+  const updatedClassName = `Smoke Class Updated ${uniqueSuffix}`;
+  const updateClass = await adminAgent
+    .post(`/admin/classes/${classIdMatch[1]}`)
+    .type("form")
+    .send({
+      name: updatedClassName,
+      description: "Smoke test class group updated",
+      teacherUserId: teacherIdMatch[1],
+    });
+  assert.equal(updateClass.status, 302);
+  assert.equal(updateClass.headers.location, "/admin/dashboard?notice=Class%20details%20updated.");
+
+  const updateStudent = await adminAgent
+    .post(`/admin/students/${studentIdMatch[1]}`)
+    .type("form")
+    .send({
+      firstName: "Ibrahim",
+      lastName: "Khan",
+      teacherUserId: teacherIdMatch[1],
+      currentSurah: "Surah Al-Mulk",
+      currentAyah: "Ayah 12",
+      monthlyFee: 40,
+    });
+  assert.equal(updateStudent.status, 302);
+  assert.equal(updateStudent.headers.location, "/admin/dashboard?notice=Student%20details%20updated.");
+
+  const adminAfterEdits = await adminAgent.get("/admin/dashboard");
+  assert.match(adminAfterEdits.text, new RegExp(updatedClassName));
+  assert.match(adminAfterEdits.text, /Ayah 12/);
+
   const pendingEmail = `pending-${uniqueSuffix}@makki-masjid.test`;
   const additionalGuardianEmail = `guardian-${uniqueSuffix}@makki-masjid.test`;
   const createGuardian = await adminAgent
@@ -96,6 +126,71 @@ async function run() {
   const additionalGuardianDashboard = await additionalGuardianAgent.get("/parent/dashboard");
   assert.equal(additionalGuardianDashboard.status, 200);
   assert.match(additionalGuardianDashboard.text, /Ibrahim Khan/);
+
+  const removeGuardian = await adminAgent
+    .post(`/admin/students/${studentIdMatch[1]}/guardians/${guardianIdMatch[1]}/remove`)
+    .type("form")
+    .send({});
+  assert.equal(removeGuardian.status, 302);
+  assert.equal(removeGuardian.headers.location, "/admin/dashboard?notice=Guardian%20link%20removed.");
+
+  const additionalGuardianAfterRemoval = await additionalGuardianAgent.get("/parent/dashboard");
+  assert.equal(additionalGuardianAfterRemoval.status, 200);
+  assert.doesNotMatch(additionalGuardianAfterRemoval.text, /Ibrahim Khan/);
+
+  const updatedGuardianEmail = `guardian-updated-${uniqueSuffix}@makki-masjid.test`;
+  const updateGuardianUser = await adminAgent
+    .post(`/admin/users/${guardianIdMatch[1]}`)
+    .type("form")
+    .send({
+      name: `Smoke Test Guardian Updated ${uniqueSuffix}`,
+      email: updatedGuardianEmail,
+      role: "parent",
+    });
+  assert.equal(updateGuardianUser.status, 302);
+  assert.equal(updateGuardianUser.headers.location, "/admin/dashboard?notice=User%20details%20updated.");
+
+  const deactivateGuardian = await adminAgent
+    .post(`/admin/users/${guardianIdMatch[1]}/active`)
+    .type("form")
+    .send({ active: "0" });
+  assert.equal(deactivateGuardian.status, 302);
+  assert.equal(deactivateGuardian.headers.location, "/admin/dashboard?notice=User%20deactivated.");
+
+  const inactiveGuardianLogin = await request(app)
+    .post("/login")
+    .type("form")
+    .send({ email: updatedGuardianEmail, password: "Password123!" });
+  assert.equal(inactiveGuardianLogin.status, 302);
+  assert.equal(inactiveGuardianLogin.headers.location.startsWith("/?error=Invalid"), true);
+
+  const reactivateGuardian = await adminAgent
+    .post(`/admin/users/${guardianIdMatch[1]}/active`)
+    .type("form")
+    .send({ active: "1" });
+  assert.equal(reactivateGuardian.status, 302);
+  assert.equal(reactivateGuardian.headers.location, "/admin/dashboard?notice=User%20reactivated.");
+
+  const reactivatedGuardianLogin = await request(app)
+    .post("/login")
+    .type("form")
+    .send({ email: updatedGuardianEmail, password: "Password123!" });
+  assert.equal(reactivatedGuardianLogin.status, 302);
+  assert.equal(reactivatedGuardianLogin.headers.location.startsWith("/parent/dashboard"), true);
+
+  const deleteGuardianUser = await adminAgent
+    .post(`/admin/users/${guardianIdMatch[1]}/delete`)
+    .type("form")
+    .send({});
+  assert.equal(deleteGuardianUser.status, 302);
+  assert.equal(deleteGuardianUser.headers.location, "/admin/dashboard?notice=User%20deleted.");
+
+  const deletedGuardianLogin = await request(app)
+    .post("/login")
+    .type("form")
+    .send({ email: updatedGuardianEmail, password: "Password123!" });
+  assert.equal(deletedGuardianLogin.status, 302);
+  assert.equal(deletedGuardianLogin.headers.location.startsWith("/?error=Invalid"), true);
 
   const signup = await request(app)
     .post("/signup")
@@ -187,7 +282,24 @@ async function run() {
   assert.equal(teacherDashboard.status, 200);
   assert.match(teacherDashboard.text, /Ustadh Portal/);
   assert.match(teacherDashboard.text, /Ibrahim Khan/);
-  assert.match(teacherDashboard.text, new RegExp(`Smoke Class ${uniqueSuffix}`));
+  assert.match(teacherDashboard.text, new RegExp(updatedClassName));
+
+  const removeClassAssignment = await adminAgent
+    .post(`/admin/classes/${classIdMatch[1]}/students/${studentIdMatch[1]}/remove`)
+    .type("form")
+    .send({});
+  assert.equal(removeClassAssignment.status, 302);
+  assert.equal(removeClassAssignment.headers.location, "/admin/dashboard?notice=Class%20assignment%20removed.");
+
+  const deleteClass = await adminAgent
+    .post(`/admin/classes/${classIdMatch[1]}/delete`)
+    .type("form")
+    .send({});
+  assert.equal(deleteClass.status, 302);
+  assert.equal(deleteClass.headers.location, "/admin/dashboard?notice=Class%20deleted.");
+
+  const adminAfterClassDelete = await adminAgent.get("/admin/dashboard");
+  assert.doesNotMatch(adminAfterClassDelete.text, new RegExp(updatedClassName));
 
   const parentLogin = await parentAgent
     .post("/login")

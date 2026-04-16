@@ -328,6 +328,63 @@ th {
   width: 100%;
 }
 
+.admin-edit-list {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-edit-item {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.compact-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.action-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.management-block {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.management-block h3 {
+  margin-bottom: 10px;
+  font-size: 1rem;
+}
+
+.pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pill-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.danger-button {
+  color: var(--error);
+}
+
 .two-column-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -364,6 +421,11 @@ th {
 .badge-neutral {
   background: var(--accent-soft);
   color: var(--accent-strong);
+}
+
+.badge-warning {
+  background: rgba(140, 94, 22, 0.14);
+  color: var(--warning);
 }
 
 .metrics-row,
@@ -452,7 +514,8 @@ th {
   .topbar,
   .brand-lockup,
   .student-card-header,
-  .timeline-item {
+  .timeline-item,
+  .action-row {
     flex-direction: column;
   }
 }

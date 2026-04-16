@@ -257,85 +257,183 @@
 
       <section class="forms-grid">
         <article class="form-card">
-          <h2>Users</h2>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Email</th>
-                  <th>Role</th>
-                </tr>
-              </thead>
-              <tbody>
-                <% dashboard.users.filter((account) => account.role !== "pending").forEach((account) => { %>
-                  <tr>
-                    <td><%= account.name %></td>
-                    <td><%= account.email %></td>
-                    <td><span class="badge badge-neutral"><%= account.role %></span></td>
-                  </tr>
-                <% }) %>
-              </tbody>
-            </table>
+          <h2>Manage users</h2>
+          <p class="muted">Edit roles and remove access. Permanent delete is only available when the user has no linked records.</p>
+          <div class="admin-edit-list">
+            <% dashboard.users.filter((account) => account.role !== "pending").forEach((account) => { %>
+              <article class="admin-edit-item">
+                <form method="post" action="/admin/users/<%= account.id %>" class="stack">
+                  <div class="compact-grid">
+                    <label>
+                      <span>Name</span>
+                      <input type="text" name="name" value="<%= account.name %>" required />
+                    </label>
+                    <label>
+                      <span>Email</span>
+                      <input type="email" name="email" value="<%= account.email %>" required />
+                    </label>
+                    <label>
+                      <span>Role</span>
+                      <select name="role" required>
+                        <option value="admin" <%= account.role === "admin" ? "selected" : "" %>>Admin</option>
+                        <option value="teacher" <%= account.role === "teacher" ? "selected" : "" %>><%= tenant.terminology.teacher %></option>
+                        <option value="parent" <%= account.role === "parent" ? "selected" : "" %>><%= tenant.terminology.parent %></option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="action-row">
+                    <span>
+                      <span class="badge <%= account.active ? "badge-neutral" : "badge-warning" %>"><%= account.active ? "active" : "inactive" %></span>
+                      <span class="table-subtext"><%= account.dependencyCount %> linked record(s)</span>
+                    </span>
+                    <button class="primary-button" type="submit">Save user</button>
+                  </div>
+                </form>
+
+                <div class="action-row">
+                  <% if (account.id !== user.id) { %>
+                    <form method="post" action="/admin/users/<%= account.id %>/active">
+                      <input type="hidden" name="active" value="<%= account.active ? "0" : "1" %>" />
+                      <button class="ghost-button" type="submit"><%= account.active ? "Deactivate" : "Reactivate" %></button>
+                    </form>
+                    <% if (account.dependencyCount === 0) { %>
+                      <form method="post" action="/admin/users/<%= account.id %>/delete">
+                        <button class="link-button danger-button" type="submit">Delete permanently</button>
+                      </form>
+                    <% } else { %>
+                      <span class="muted">Remove linked students/classes before permanent delete.</span>
+                    <% } %>
+                  <% } else { %>
+                    <span class="muted">This is your account. Another admin must manage it.</span>
+                  <% } %>
+                </div>
+              </article>
+            <% }) %>
+            <% if (dashboard.users.filter((account) => account.role !== "pending").length === 0) { %>
+              <p class="muted">No active admin-managed users yet.</p>
+            <% } %>
           </div>
         </article>
 
         <article class="form-card">
           <h2>Classes</h2>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Class</th>
-                  <th><%= tenant.terminology.teacher %></th>
-                  <th>Students</th>
-                </tr>
-              </thead>
-              <tbody>
-                <% dashboard.classGroups.forEach((classGroup) => { %>
-                  <tr>
-                    <td>
-                      <strong><%= classGroup.name %></strong>
-                      <span class="table-subtext"><%= classGroup.description || "No description" %></span>
-                    </td>
-                    <td><%= classGroup.teacherName %></td>
-                    <td><%= classGroup.studentCount %></td>
-                  </tr>
-                <% }) %>
-              </tbody>
-            </table>
+          <div class="admin-edit-list">
+            <% dashboard.classGroups.forEach((classGroup) => { %>
+              <article class="admin-edit-item">
+                <form method="post" action="/admin/classes/<%= classGroup.id %>" class="stack">
+                  <div class="compact-grid">
+                    <label>
+                      <span>Class name</span>
+                      <input type="text" name="name" value="<%= classGroup.name %>" required />
+                    </label>
+                    <label>
+                      <span><%= tenant.terminology.teacher %></span>
+                      <select name="teacherUserId" required>
+                        <% dashboard.teachers.forEach((teacher) => { %>
+                          <option value="<%= teacher.id %>" <%= teacher.id === classGroup.teacherUserId ? "selected" : "" %>><%= teacher.name %></option>
+                        <% }) %>
+                      </select>
+                    </label>
+                  </div>
+                  <label>
+                    <span>Description</span>
+                    <textarea name="description" rows="2"><%= classGroup.description %></textarea>
+                  </label>
+                  <div class="action-row">
+                    <span class="muted"><%= classGroup.studentCount %> assigned <%= tenant.terminology.student.toLowerCase() %>(s)</span>
+                    <button class="primary-button" type="submit">Save class</button>
+                  </div>
+                </form>
+                <form method="post" action="/admin/classes/<%= classGroup.id %>/delete" class="action-row">
+                  <span class="muted">Deleting a class removes the group assignment only. Student records remain.</span>
+                  <button class="link-button danger-button" type="submit">Delete class</button>
+                </form>
+              </article>
+            <% }) %>
+            <% if (dashboard.classGroups.length === 0) { %>
+              <p class="muted">No classes created yet.</p>
+            <% } %>
           </div>
         </article>
       </section>
 
       <section class="form-card form-card-wide">
-        <h2>Students</h2>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Classes</th>
-                <th><%= tenant.terminology.teacher %></th>
-                <th><%= tenant.terminology.parent %>s</th>
-                <th>Fee</th>
-              </tr>
-            </thead>
-            <tbody>
-              <% dashboard.students.forEach((student) => { %>
-                <tr>
-                  <td>
-                    <strong><%= student.fullName %></strong>
-                    <span class="table-subtext"><%= student.currentSurah %> · <%= student.currentAyah %></span>
-                  </td>
-                  <td><%= student.classNames.length ? student.classNames.join(", ") : "Not assigned" %></td>
-                  <td><%= student.teacherName %></td>
-                  <td><%= student.guardianNames.length ? student.guardianNames.join(", ") : "No guardian linked" %></td>
-                  <td><%= currencySymbol %><%= student.monthlyFee.toFixed(2) %></td>
-                </tr>
-              <% }) %>
-            </tbody>
-          </table>
+        <h2>Manage students</h2>
+        <p class="muted">Admins can update student details, remove class assignments, and unlink additional guardians.</p>
+        <div class="admin-edit-list">
+          <% dashboard.students.forEach((student) => { %>
+            <article class="admin-edit-item">
+              <form method="post" action="/admin/students/<%= student.id %>" class="stack">
+                <div class="compact-grid">
+                  <label>
+                    <span>First name</span>
+                    <input type="text" name="firstName" value="<%= student.firstName %>" required />
+                  </label>
+                  <label>
+                    <span>Last name</span>
+                    <input type="text" name="lastName" value="<%= student.lastName %>" required />
+                  </label>
+                  <label>
+                    <span><%= tenant.terminology.teacher %></span>
+                    <select name="teacherUserId" required>
+                      <% dashboard.teachers.forEach((teacher) => { %>
+                        <option value="<%= teacher.id %>" <%= teacher.id === student.teacherUserId ? "selected" : "" %>><%= teacher.name %></option>
+                      <% }) %>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Monthly fee</span>
+                    <input type="number" name="monthlyFee" min="0" step="0.01" value="<%= student.monthlyFee %>" required />
+                  </label>
+                  <label>
+                    <span>Current surah</span>
+                    <input type="text" name="currentSurah" value="<%= student.currentSurah %>" required />
+                  </label>
+                  <label>
+                    <span>Current ayah</span>
+                    <input type="text" name="currentAyah" value="<%= student.currentAyah %>" required />
+                  </label>
+                </div>
+                <div class="action-row">
+                  <strong><%= student.fullName %></strong>
+                  <button class="primary-button" type="submit">Save student</button>
+                </div>
+              </form>
+
+              <div class="management-block">
+                <h3>Class assignments</h3>
+                <% if (student.classAssignments.length === 0) { %>
+                  <p class="muted">Not assigned to a class.</p>
+                <% } %>
+                <div class="pill-list">
+                  <% student.classAssignments.forEach((classGroup) => { %>
+                    <form method="post" action="/admin/classes/<%= classGroup.id %>/students/<%= student.id %>/remove" class="pill-form">
+                      <span><%= classGroup.name %></span>
+                      <button class="link-button danger-button" type="submit">Remove</button>
+                    </form>
+                  <% }) %>
+                </div>
+              </div>
+
+              <div class="management-block">
+                <h3><%= tenant.terminology.parent %> links</h3>
+                <% if (student.guardians.length === 0) { %>
+                  <p class="muted">No guardians linked.</p>
+                <% } %>
+                <div class="pill-list">
+                  <% student.guardians.forEach((guardian) => { %>
+                    <form method="post" action="/admin/students/<%= student.id %>/guardians/<%= guardian.id %>/remove" class="pill-form">
+                      <span><%= guardian.name %> · <%= guardian.relationship %><%= guardian.isPrimary ? " · primary" : "" %></span>
+                      <button class="link-button danger-button" type="submit">Remove</button>
+                    </form>
+                  <% }) %>
+                </div>
+              </div>
+            </article>
+          <% }) %>
+          <% if (dashboard.students.length === 0) { %>
+            <p class="muted">No students registered yet.</p>
+          <% } %>
         </div>
       </section>
     </main>

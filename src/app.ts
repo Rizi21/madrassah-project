@@ -9,6 +9,8 @@ import {
   approvePendingUser,
   assignStudentToClass,
   createClassGroup,
+  deleteClassGroup,
+  deleteOrganizationUser,
   createPasswordResetToken,
   createOrganizationUser,
   createSession,
@@ -22,7 +24,13 @@ import {
   recordAttendance,
   registerAdminWithSetupCode,
   registerWithMasjidCode,
+  removeGuardianFromStudent,
+  removeStudentFromClass,
   resetPasswordWithToken,
+  setOrganizationUserActive,
+  updateClassGroup,
+  updateOrganizationUser,
+  updateStudent,
   upsertFee,
   validateUserCredentials,
 } from "./database.js";
@@ -351,6 +359,94 @@ export function createApp() {
     return res.redirect("/admin/dashboard?notice=User approved.");
   });
 
+  app.post("/admin/users/:userId", requireRole("admin"), (req: Request, res: Response) => {
+    const schema = z.object({
+      userId: z.coerce.number().int().positive(),
+      name: z.string().min(2),
+      email: z.string().email(),
+      role: z.enum(["admin", "teacher", "parent"]),
+    });
+
+    const result = schema.safeParse({
+      userId: req.params.userId,
+      ...req.body,
+    });
+
+    if (!result.success) {
+      return res.redirect("/admin/dashboard?error=User update details were invalid.");
+    }
+
+    try {
+      updateOrganizationUser({
+        organizationId: req.user!.organizationId,
+        currentAdminId: req.user!.id,
+        userId: result.data.userId,
+        name: result.data.name,
+        email: result.data.email,
+        role: result.data.role as Exclude<UserRole, "pending">,
+      });
+    } catch (error) {
+      return res.redirect(`/admin/dashboard?error=${encodeURIComponent((error as Error).message)}`);
+    }
+
+    return res.redirect("/admin/dashboard?notice=User details updated.");
+  });
+
+  app.post("/admin/users/:userId/active", requireRole("admin"), (req: Request, res: Response) => {
+    const schema = z.object({
+      userId: z.coerce.number().int().positive(),
+      active: z.enum(["0", "1"]),
+    });
+
+    const result = schema.safeParse({
+      userId: req.params.userId,
+      active: req.body.active,
+    });
+
+    if (!result.success) {
+      return res.redirect("/admin/dashboard?error=User status details were invalid.");
+    }
+
+    try {
+      setOrganizationUserActive({
+        organizationId: req.user!.organizationId,
+        currentAdminId: req.user!.id,
+        userId: result.data.userId,
+        active: result.data.active === "1",
+      });
+    } catch (error) {
+      return res.redirect(`/admin/dashboard?error=${encodeURIComponent((error as Error).message)}`);
+    }
+
+    return res.redirect(`/admin/dashboard?notice=User ${result.data.active === "1" ? "reactivated" : "deactivated"}.`);
+  });
+
+  app.post("/admin/users/:userId/delete", requireRole("admin"), (req: Request, res: Response) => {
+    const schema = z.object({
+      userId: z.coerce.number().int().positive(),
+    });
+
+    const result = schema.safeParse({
+      userId: req.params.userId,
+    });
+
+    if (!result.success) {
+      return res.redirect("/admin/dashboard?error=User deletion details were invalid.");
+    }
+
+    try {
+      deleteOrganizationUser({
+        organizationId: req.user!.organizationId,
+        currentAdminId: req.user!.id,
+        userId: result.data.userId,
+      });
+    } catch (error) {
+      return res.redirect(`/admin/dashboard?error=${encodeURIComponent((error as Error).message)}`);
+    }
+
+    return res.redirect("/admin/dashboard?notice=User deleted.");
+  });
+
   app.post("/admin/students", requireRole("admin"), (req: Request, res: Response) => {
     const schema = z.object({
       firstName: z.string().min(1),
@@ -378,6 +474,38 @@ export function createApp() {
     }
 
     return res.redirect("/admin/dashboard?notice=Student created.");
+  });
+
+  app.post("/admin/students/:studentId", requireRole("admin"), (req: Request, res: Response) => {
+    const schema = z.object({
+      studentId: z.coerce.number().int().positive(),
+      firstName: z.string().min(1),
+      lastName: z.string().min(1),
+      teacherUserId: z.coerce.number().int().positive(),
+      currentSurah: z.string().min(2),
+      currentAyah: z.string().min(2),
+      monthlyFee: z.coerce.number().min(0),
+    });
+
+    const result = schema.safeParse({
+      studentId: req.params.studentId,
+      ...req.body,
+    });
+
+    if (!result.success) {
+      return res.redirect("/admin/dashboard?error=Student update details were invalid.");
+    }
+
+    try {
+      updateStudent({
+        organizationId: req.user!.organizationId,
+        ...result.data,
+      });
+    } catch (error) {
+      return res.redirect(`/admin/dashboard?error=${encodeURIComponent((error as Error).message)}`);
+    }
+
+    return res.redirect("/admin/dashboard?notice=Student details updated.");
   });
 
   app.post("/admin/students/:studentId/guardians", requireRole("admin"), (req: Request, res: Response) => {
@@ -411,6 +539,38 @@ export function createApp() {
     return res.redirect("/admin/dashboard?notice=Guardian linked to student.");
   });
 
+  app.post(
+    "/admin/students/:studentId/guardians/:guardianUserId/remove",
+    requireRole("admin"),
+    (req: Request, res: Response) => {
+      const schema = z.object({
+        studentId: z.coerce.number().int().positive(),
+        guardianUserId: z.coerce.number().int().positive(),
+      });
+
+      const result = schema.safeParse({
+        studentId: req.params.studentId,
+        guardianUserId: req.params.guardianUserId,
+      });
+
+      if (!result.success) {
+        return res.redirect("/admin/dashboard?error=Guardian removal details were invalid.");
+      }
+
+      try {
+        removeGuardianFromStudent({
+          organizationId: req.user!.organizationId,
+          studentId: result.data.studentId,
+          guardianUserId: result.data.guardianUserId,
+        });
+      } catch (error) {
+        return res.redirect(`/admin/dashboard?error=${encodeURIComponent((error as Error).message)}`);
+      }
+
+      return res.redirect("/admin/dashboard?notice=Guardian link removed.");
+    },
+  );
+
   app.post("/admin/classes", requireRole("admin"), (req: Request, res: Response) => {
     const schema = z.object({
       name: z.string().min(2),
@@ -436,6 +596,63 @@ export function createApp() {
     }
 
     return res.redirect("/admin/dashboard?notice=Class created.");
+  });
+
+  app.post("/admin/classes/:classGroupId", requireRole("admin"), (req: Request, res: Response) => {
+    const schema = z.object({
+      classGroupId: z.coerce.number().int().positive(),
+      name: z.string().min(2),
+      description: z.string().optional(),
+      teacherUserId: z.coerce.number().int().positive(),
+    });
+
+    const result = schema.safeParse({
+      classGroupId: req.params.classGroupId,
+      ...req.body,
+    });
+
+    if (!result.success) {
+      return res.redirect("/admin/dashboard?error=Class update details were invalid.");
+    }
+
+    try {
+      updateClassGroup({
+        organizationId: req.user!.organizationId,
+        classGroupId: result.data.classGroupId,
+        teacherUserId: result.data.teacherUserId,
+        name: result.data.name,
+        description: result.data.description ?? "",
+      });
+    } catch (error) {
+      return res.redirect(`/admin/dashboard?error=${encodeURIComponent((error as Error).message)}`);
+    }
+
+    return res.redirect("/admin/dashboard?notice=Class details updated.");
+  });
+
+  app.post("/admin/classes/:classGroupId/delete", requireRole("admin"), (req: Request, res: Response) => {
+    const schema = z.object({
+      classGroupId: z.coerce.number().int().positive(),
+    });
+
+    const result = schema.safeParse({
+      classGroupId: req.params.classGroupId,
+    });
+
+    if (!result.success) {
+      return res.redirect("/admin/dashboard?error=Class deletion details were invalid.");
+    }
+
+    try {
+      deleteClassGroup({
+        organizationId: req.user!.organizationId,
+        classGroupId: result.data.classGroupId,
+      });
+    } catch (error) {
+      return res.redirect(`/admin/dashboard?error=${encodeURIComponent((error as Error).message)}`);
+    }
+
+    return res.redirect("/admin/dashboard?notice=Class deleted.");
   });
 
   app.post("/admin/classes/:classGroupId/students", requireRole("admin"), (req: Request, res: Response) => {
@@ -465,6 +682,38 @@ export function createApp() {
 
     return res.redirect("/admin/dashboard?notice=Student assigned to class.");
   });
+
+  app.post(
+    "/admin/classes/:classGroupId/students/:studentId/remove",
+    requireRole("admin"),
+    (req: Request, res: Response) => {
+      const schema = z.object({
+        classGroupId: z.coerce.number().int().positive(),
+        studentId: z.coerce.number().int().positive(),
+      });
+
+      const result = schema.safeParse({
+        classGroupId: req.params.classGroupId,
+        studentId: req.params.studentId,
+      });
+
+      if (!result.success) {
+        return res.redirect("/admin/dashboard?error=Class assignment removal details were invalid.");
+      }
+
+      try {
+        removeStudentFromClass({
+          organizationId: req.user!.organizationId,
+          classGroupId: result.data.classGroupId,
+          studentId: result.data.studentId,
+        });
+      } catch (error) {
+        return res.redirect(`/admin/dashboard?error=${encodeURIComponent((error as Error).message)}`);
+      }
+
+      return res.redirect("/admin/dashboard?notice=Class assignment removed.");
+    },
+  );
 
   app.get("/teacher/dashboard", requireRole("teacher"), (req: Request, res: Response) => {
     const dashboard = getTeacherDashboardData(req.user!.id, req.user!.organizationId);

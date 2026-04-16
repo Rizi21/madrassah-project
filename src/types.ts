@@ -92,16 +92,31 @@ export interface AdminUserRow {
   name: string;
   email: string;
   role: UserRole;
+  active: boolean;
+  dependencyCount: number;
 }
 
 export interface AdminStudentRow {
   id: number;
+  firstName: string;
+  lastName: string;
   fullName: string;
   classNames: string[];
+  classAssignments: Array<{
+    id: number;
+    name: string;
+  }>;
   guardianNames: string[];
+  guardians: Array<{
+    id: number;
+    name: string;
+    relationship: string;
+    isPrimary: boolean;
+  }>;
   currentSurah: string;
   currentAyah: string;
   monthlyFee: number;
+  teacherUserId: number;
   teacherName: string;
 }
 
@@ -109,6 +124,7 @@ export interface AdminClassGroupRow {
   id: number;
   name: string;
   description: string;
+  teacherUserId: number;
   teacherName: string;
   studentCount: number;
 }

@@ -101,6 +101,7 @@ export function initializeDatabase(tenantConfig: TenantConfig): void {
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
       FOREIGN KEY (organization_id) REFERENCES organizations(id)
     );
 
@@ -210,6 +211,7 @@ export function initializeDatabase(tenantConfig: TenantConfig): void {
   ensureColumn("organizations", "masjid_code", "TEXT");
   ensureColumn("organizations", "admin_signup_code", "TEXT");
   ensureColumn("organizations", "logo_path", "TEXT");
+  ensureColumn("users", "active", "INTEGER NOT NULL DEFAULT 1");
 
   seedDemoData(tenantConfig);
   backfillStudentGuardians();
@@ -480,7 +482,7 @@ export function validateUserCredentials(email: string, password: string): AuthUs
     .prepare(`
       SELECT id, organization_id AS organizationId, role, name, email, password_hash AS passwordHash
       FROM users
-      WHERE lower(email) = lower(?)
+      WHERE lower(email) = lower(?) AND active = 1
     `)
     .get(email) as
     | {
@@ -585,7 +587,7 @@ export function getUserForSession(sessionId: string | undefined): AuthUser | nul
       SELECT u.id, u.organization_id AS organizationId, u.role, u.name, u.email
       FROM sessions s
       INNER JOIN users u ON u.id = s.user_id
-      WHERE s.id = ? AND s.expires_at >= ?
+      WHERE s.id = ? AND s.expires_at >= ? AND u.active = 1
     `)
     .get(sessionId, new Date().toISOString()) as AuthUser | undefined;
 
@@ -673,7 +675,7 @@ function userBelongsToOrganization(userId: number, organizationId: number, role?
     .prepare(`
       SELECT id
       FROM users
-      WHERE id = ? AND organization_id = ? AND (? IS NULL OR role = ?)
+      WHERE id = ? AND organization_id = ? AND active = 1 AND (? IS NULL OR role = ?)
     `)
     .get(userId, organizationId, role ?? null, role ?? null) as { id: number } | undefined;
 
@@ -767,31 +769,48 @@ function getStudentSummary(studentId: number): StudentSummary {
 }
 
 function getStudentClassNames(studentId: number): string[] {
+  return getStudentClassAssignments(studentId).map((classGroup) => classGroup.name);
+}
+
+function getStudentClassAssignments(studentId: number): Array<{ id: number; name: string }> {
   const rows = db
     .prepare(`
-      SELECT cg.name
+      SELECT cg.id, cg.name
       FROM class_students cs
       INNER JOIN class_groups cg ON cg.id = cs.class_group_id
       WHERE cs.student_id = ?
       ORDER BY cg.name
     `)
-    .all(studentId) as Array<{ name: string }>;
+    .all(studentId) as Array<{ id: number; name: string }>;
 
-  return rows.map((row) => row.name);
+  return rows;
 }
 
 function getStudentGuardianNames(studentId: number): string[] {
+  return getStudentGuardianLinks(studentId).map((guardian) => guardian.name);
+}
+
+function getStudentGuardianLinks(
+  studentId: number,
+): Array<{ id: number; name: string; relationship: string; isPrimary: boolean }> {
   const rows = db
     .prepare(`
-      SELECT u.name
+      SELECT
+        u.id,
+        u.name,
+        sg.relationship,
+        sg.is_primary AS isPrimary
       FROM student_guardians sg
       INNER JOIN users u ON u.id = sg.guardian_user_id
       WHERE sg.student_id = ?
       ORDER BY sg.is_primary DESC, u.name
     `)
-    .all(studentId) as Array<{ name: string }>;
+    .all(studentId) as Array<{ id: number; name: string; relationship: string; isPrimary: number }>;
 
-  return rows.map((row) => row.name);
+  return rows.map((row) => ({
+    ...row,
+    isPrimary: row.isPrimary === 1,
+  }));
 }
 
 export function getTeacherDashboardData(teacherId: number, organizationId: number): TeacherDashboardData {
@@ -942,14 +961,41 @@ export function getParentDashboardData(parentId: number, organizationId: number)
   };
 }
 
+function getUserDependencyCount(userId: number): number {
+  const teacherStudentCount = db
+    .prepare("SELECT COUNT(*) AS count FROM students WHERE teacher_user_id = ?")
+    .get(userId) as { count: number };
+  const primaryGuardianStudentCount = db
+    .prepare("SELECT COUNT(*) AS count FROM students WHERE guardian_user_id = ?")
+    .get(userId) as { count: number };
+  const guardianLinkCount = db
+    .prepare("SELECT COUNT(*) AS count FROM student_guardians WHERE guardian_user_id = ?")
+    .get(userId) as { count: number };
+  const classGroupCount = db
+    .prepare("SELECT COUNT(*) AS count FROM class_groups WHERE teacher_user_id = ?")
+    .get(userId) as { count: number };
+  const progressEntryCount = db
+    .prepare("SELECT COUNT(*) AS count FROM progress_entries WHERE teacher_id = ?")
+    .get(userId) as { count: number };
+
+  return (
+    teacherStudentCount.count +
+    primaryGuardianStudentCount.count +
+    guardianLinkCount.count +
+    classGroupCount.count +
+    progressEntryCount.count
+  );
+}
+
 export function getAdminDashboardData(organizationId: number): AdminDashboardData {
   const organization = getOrganizationDetails(organizationId);
-  const users = db
+  const userRows = db
     .prepare(`
-      SELECT id, name, email, role
+      SELECT id, name, email, role, active
       FROM users
       WHERE organization_id = ?
       ORDER BY
+        active DESC,
         CASE role
           WHEN 'admin' THEN 1
           WHEN 'teacher' THEN 2
@@ -958,16 +1004,25 @@ export function getAdminDashboardData(organizationId: number): AdminDashboardDat
         END,
         name
     `)
-    .all(organizationId) as AdminUserRow[];
+    .all(organizationId) as Array<Omit<AdminUserRow, "active" | "dependencyCount"> & { active: number }>;
+
+  const users: AdminUserRow[] = userRows.map((user) => ({
+    ...user,
+    active: user.active === 1,
+    dependencyCount: getUserDependencyCount(user.id),
+  }));
 
   const students = db
     .prepare(`
       SELECT
         s.id,
+        s.first_name AS firstName,
+        s.last_name AS lastName,
         s.first_name || ' ' || s.last_name AS fullName,
         s.current_surah AS currentSurah,
         s.current_ayah AS currentAyah,
         s.monthly_fee AS monthlyFee,
+        s.teacher_user_id AS teacherUserId,
         teacher.name AS teacherName
       FROM students s
       INNER JOIN users teacher ON teacher.id = s.teacher_user_id
@@ -982,6 +1037,7 @@ export function getAdminDashboardData(organizationId: number): AdminDashboardDat
         cg.id,
         cg.name,
         cg.description,
+        cg.teacher_user_id AS teacherUserId,
         teacher.name AS teacherName,
         COUNT(cs.student_id) AS studentCount
       FROM class_groups cg
@@ -995,7 +1051,9 @@ export function getAdminDashboardData(organizationId: number): AdminDashboardDat
 
   const studentsWithClasses = students.map((student) => ({
     ...student,
+    classAssignments: getStudentClassAssignments(student.id),
     classNames: getStudentClassNames(student.id),
+    guardians: getStudentGuardianLinks(student.id),
     guardianNames: getStudentGuardianNames(student.id),
   }));
 
@@ -1004,8 +1062,8 @@ export function getAdminDashboardData(organizationId: number): AdminDashboardDat
     currency: organization.currency,
     users,
     pendingUsers: users.filter((user) => user.role === "pending"),
-    teachers: users.filter((user) => user.role === "teacher"),
-    guardians: users.filter((user) => user.role === "parent"),
+    teachers: users.filter((user) => user.role === "teacher" && user.active),
+    guardians: users.filter((user) => user.role === "parent" && user.active),
     students: studentsWithClasses,
     classGroups,
   };
@@ -1027,6 +1085,52 @@ export function approvePendingUser(input: {
   if (result.changes === 0) {
     throw new Error("Pending user was not found for this masjid.");
   }
+}
+
+function getOrganizationUser(
+  userId: number,
+  organizationId: number,
+): { id: number; role: UserRole; active: boolean } | null {
+  const row = db
+    .prepare(`
+      SELECT id, role, active
+      FROM users
+      WHERE id = ? AND organization_id = ?
+      LIMIT 1
+    `)
+    .get(userId, organizationId) as { id: number; role: UserRole; active: number } | undefined;
+
+  return row ? { id: row.id, role: row.role, active: row.active === 1 } : null;
+}
+
+function getActiveAdminCount(organizationId: number): number {
+  const row = db
+    .prepare("SELECT COUNT(*) AS count FROM users WHERE organization_id = ? AND role = 'admin' AND active = 1")
+    .get(organizationId) as { count: number };
+
+  return row.count;
+}
+
+function getTeacherAssignmentCount(userId: number): number {
+  const studentCount = db
+    .prepare("SELECT COUNT(*) AS count FROM students WHERE teacher_user_id = ?")
+    .get(userId) as { count: number };
+  const classCount = db
+    .prepare("SELECT COUNT(*) AS count FROM class_groups WHERE teacher_user_id = ?")
+    .get(userId) as { count: number };
+
+  return studentCount.count + classCount.count;
+}
+
+function getGuardianAssignmentCount(userId: number): number {
+  const primaryStudentCount = db
+    .prepare("SELECT COUNT(*) AS count FROM students WHERE guardian_user_id = ?")
+    .get(userId) as { count: number };
+  const guardianLinkCount = db
+    .prepare("SELECT COUNT(*) AS count FROM student_guardians WHERE guardian_user_id = ?")
+    .get(userId) as { count: number };
+
+  return primaryStudentCount.count + guardianLinkCount.count;
 }
 
 export function createOrganizationUser(input: {
@@ -1054,6 +1158,130 @@ export function createOrganizationUser(input: {
 
     throw error;
   }
+}
+
+export function updateOrganizationUser(input: {
+  organizationId: number;
+  currentAdminId: number;
+  userId: number;
+  role: Exclude<UserRole, "pending">;
+  name: string;
+  email: string;
+}): void {
+  const existingUser = getOrganizationUser(input.userId, input.organizationId);
+
+  if (!existingUser || existingUser.role === "pending") {
+    throw new Error("User was not found for this masjid.");
+  }
+
+  if (existingUser.id === input.currentAdminId && input.role !== "admin") {
+    throw new Error("You cannot remove your own admin role.");
+  }
+
+  if (existingUser.role === "admin" && input.role !== "admin" && existingUser.active) {
+    if (getActiveAdminCount(input.organizationId) <= 1) {
+      throw new Error("At least one active admin is required.");
+    }
+  }
+
+  if (existingUser.role === "teacher" && input.role !== "teacher" && getTeacherAssignmentCount(input.userId) > 0) {
+    throw new Error("Reassign this teacher's students and classes before changing their role.");
+  }
+
+  if (existingUser.role === "parent" && input.role !== "parent" && getGuardianAssignmentCount(input.userId) > 0) {
+    throw new Error("Remove this guardian from linked students before changing their role.");
+  }
+
+  try {
+    const result = db
+      .prepare(`
+        UPDATE users
+        SET name = ?, email = ?, role = ?
+        WHERE id = ? AND organization_id = ?
+      `)
+      .run(input.name, input.email, input.role, input.userId, input.organizationId);
+
+    if (result.changes === 0) {
+      throw new Error("User was not found for this masjid.");
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("UNIQUE")) {
+      throw new Error("A user with that email already exists.");
+    }
+
+    throw error;
+  }
+}
+
+export function setOrganizationUserActive(input: {
+  organizationId: number;
+  currentAdminId: number;
+  userId: number;
+  active: boolean;
+}): void {
+  const existingUser = getOrganizationUser(input.userId, input.organizationId);
+
+  if (!existingUser || existingUser.role === "pending") {
+    throw new Error("User was not found for this masjid.");
+  }
+
+  if (!input.active && existingUser.id === input.currentAdminId) {
+    throw new Error("You cannot deactivate your own account.");
+  }
+
+  if (!input.active && existingUser.role === "admin" && existingUser.active) {
+    if (getActiveAdminCount(input.organizationId) <= 1) {
+      throw new Error("At least one active admin is required.");
+    }
+  }
+
+  const transaction = db.transaction(() => {
+    const result = db
+      .prepare("UPDATE users SET active = ? WHERE id = ? AND organization_id = ?")
+      .run(input.active ? 1 : 0, input.userId, input.organizationId);
+
+    if (result.changes === 0) {
+      throw new Error("User was not found for this masjid.");
+    }
+
+    if (!input.active) {
+      db.prepare("DELETE FROM sessions WHERE user_id = ?").run(input.userId);
+    }
+  });
+
+  transaction();
+}
+
+export function deleteOrganizationUser(input: {
+  organizationId: number;
+  currentAdminId: number;
+  userId: number;
+}): void {
+  const existingUser = getOrganizationUser(input.userId, input.organizationId);
+
+  if (!existingUser || existingUser.role === "pending") {
+    throw new Error("User was not found for this masjid.");
+  }
+
+  if (existingUser.id === input.currentAdminId) {
+    throw new Error("You cannot delete your own account.");
+  }
+
+  if (existingUser.role === "admin" && existingUser.active && getActiveAdminCount(input.organizationId) <= 1) {
+    throw new Error("At least one active admin is required.");
+  }
+
+  if (getUserDependencyCount(input.userId) > 0) {
+    throw new Error("Deactivate this user instead, or remove their student/class links before deleting.");
+  }
+
+  const transaction = db.transaction(() => {
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(input.userId);
+    db.prepare("DELETE FROM password_reset_tokens WHERE user_id = ?").run(input.userId);
+    db.prepare("DELETE FROM users WHERE id = ? AND organization_id = ?").run(input.userId, input.organizationId);
+  });
+
+  transaction();
 }
 
 export function createStudent(input: {
@@ -1101,6 +1329,60 @@ export function createStudent(input: {
   transaction();
 }
 
+function studentBelongsToOrganization(studentId: number, organizationId: number): boolean {
+  const row = db
+    .prepare(`
+      SELECT id
+      FROM students
+      WHERE id = ? AND organization_id = ?
+    `)
+    .get(studentId, organizationId) as { id: number } | undefined;
+
+  return Boolean(row);
+}
+
+export function updateStudent(input: {
+  organizationId: number;
+  studentId: number;
+  teacherUserId: number;
+  firstName: string;
+  lastName: string;
+  currentSurah: string;
+  currentAyah: string;
+  monthlyFee: number;
+}): void {
+  if (!userBelongsToOrganization(input.teacherUserId, input.organizationId, "teacher")) {
+    throw new Error("Selected teacher does not belong to this masjid.");
+  }
+
+  const result = db
+    .prepare(`
+      UPDATE students
+      SET
+        teacher_user_id = ?,
+        first_name = ?,
+        last_name = ?,
+        current_surah = ?,
+        current_ayah = ?,
+        monthly_fee = ?
+      WHERE id = ? AND organization_id = ?
+    `)
+    .run(
+      input.teacherUserId,
+      input.firstName,
+      input.lastName,
+      input.currentSurah,
+      input.currentAyah,
+      input.monthlyFee,
+      input.studentId,
+      input.organizationId,
+    );
+
+  if (result.changes === 0) {
+    throw new Error("Student was not found for this masjid.");
+  }
+}
+
 export function assignGuardianToStudent(input: {
   organizationId: number;
   studentId: number;
@@ -1129,6 +1411,85 @@ export function assignGuardianToStudent(input: {
   `).run(input.studentId, input.guardianUserId, input.relationship || "guardian", 0);
 }
 
+export function removeGuardianFromStudent(input: {
+  organizationId: number;
+  studentId: number;
+  guardianUserId: number;
+}): void {
+  const link = db
+    .prepare(`
+      SELECT sg.guardian_user_id AS guardianUserId, sg.is_primary AS isPrimary
+      FROM student_guardians sg
+      INNER JOIN students s ON s.id = sg.student_id
+      INNER JOIN users u ON u.id = sg.guardian_user_id
+      WHERE sg.student_id = ?
+        AND sg.guardian_user_id = ?
+        AND s.organization_id = ?
+        AND u.organization_id = ?
+        AND u.role = 'parent'
+      LIMIT 1
+    `)
+    .get(input.studentId, input.guardianUserId, input.organizationId, input.organizationId) as
+    | { guardianUserId: number; isPrimary: number }
+    | undefined;
+
+  if (!link) {
+    throw new Error("Guardian link was not found for this masjid.");
+  }
+
+  const guardianCount = db
+    .prepare("SELECT COUNT(*) AS count FROM student_guardians WHERE student_id = ?")
+    .get(input.studentId) as { count: number };
+
+  if (guardianCount.count <= 1) {
+    throw new Error("A student must have at least one linked guardian.");
+  }
+
+  const transaction = db.transaction(() => {
+    db.prepare("DELETE FROM student_guardians WHERE student_id = ? AND guardian_user_id = ?").run(
+      input.studentId,
+      input.guardianUserId,
+    );
+
+    const remainingPrimary = db
+      .prepare(`
+        SELECT guardian_user_id AS guardianUserId
+        FROM student_guardians
+        WHERE student_id = ? AND is_primary = 1
+        LIMIT 1
+      `)
+      .get(input.studentId) as { guardianUserId: number } | undefined;
+
+    const fallbackGuardian = db
+      .prepare(`
+        SELECT guardian_user_id AS guardianUserId
+        FROM student_guardians
+        WHERE student_id = ?
+        ORDER BY created_at, guardian_user_id
+        LIMIT 1
+      `)
+      .get(input.studentId) as { guardianUserId: number } | undefined;
+
+    const primaryGuardianId = remainingPrimary?.guardianUserId ?? fallbackGuardian?.guardianUserId;
+
+    if (!primaryGuardianId) {
+      throw new Error("A student must have at least one linked guardian.");
+    }
+
+    db.prepare("UPDATE student_guardians SET is_primary = CASE WHEN guardian_user_id = ? THEN 1 ELSE 0 END WHERE student_id = ?").run(
+      primaryGuardianId,
+      input.studentId,
+    );
+    db.prepare("UPDATE students SET guardian_user_id = ? WHERE id = ? AND organization_id = ?").run(
+      primaryGuardianId,
+      input.studentId,
+      input.organizationId,
+    );
+  });
+
+  transaction();
+}
+
 export function createClassGroup(input: {
   organizationId: number;
   teacherUserId: number;
@@ -1143,6 +1504,30 @@ export function createClassGroup(input: {
     INSERT INTO class_groups (organization_id, teacher_user_id, name, description)
     VALUES (?, ?, ?, ?)
   `).run(input.organizationId, input.teacherUserId, input.name, input.description);
+}
+
+export function updateClassGroup(input: {
+  organizationId: number;
+  classGroupId: number;
+  teacherUserId: number;
+  name: string;
+  description: string;
+}): void {
+  if (!userBelongsToOrganization(input.teacherUserId, input.organizationId, "teacher")) {
+    throw new Error("Selected teacher does not belong to this masjid.");
+  }
+
+  const result = db
+    .prepare(`
+      UPDATE class_groups
+      SET teacher_user_id = ?, name = ?, description = ?
+      WHERE id = ? AND organization_id = ?
+    `)
+    .run(input.teacherUserId, input.name, input.description, input.classGroupId, input.organizationId);
+
+  if (result.changes === 0) {
+    throw new Error("Class was not found for this masjid.");
+  }
 }
 
 export function assignStudentToClass(input: {
@@ -1178,6 +1563,63 @@ export function assignStudentToClass(input: {
     INSERT OR IGNORE INTO class_students (class_group_id, student_id)
     VALUES (?, ?)
   `).run(input.classGroupId, input.studentId);
+}
+
+export function removeStudentFromClass(input: {
+  organizationId: number;
+  classGroupId: number;
+  studentId: number;
+}): void {
+  const classGroup = db
+    .prepare(`
+      SELECT id
+      FROM class_groups
+      WHERE id = ? AND organization_id = ?
+    `)
+    .get(input.classGroupId, input.organizationId) as { id: number } | undefined;
+
+  if (!classGroup) {
+    throw new Error("Class was not found for this masjid.");
+  }
+
+  if (!studentBelongsToOrganization(input.studentId, input.organizationId)) {
+    throw new Error("Student was not found for this masjid.");
+  }
+
+  const result = db
+    .prepare("DELETE FROM class_students WHERE class_group_id = ? AND student_id = ?")
+    .run(input.classGroupId, input.studentId);
+
+  if (result.changes === 0) {
+    throw new Error("Student was not assigned to that class.");
+  }
+}
+
+export function deleteClassGroup(input: {
+  organizationId: number;
+  classGroupId: number;
+}): void {
+  const classGroup = db
+    .prepare(`
+      SELECT id
+      FROM class_groups
+      WHERE id = ? AND organization_id = ?
+    `)
+    .get(input.classGroupId, input.organizationId) as { id: number } | undefined;
+
+  if (!classGroup) {
+    throw new Error("Class was not found for this masjid.");
+  }
+
+  const transaction = db.transaction(() => {
+    db.prepare("DELETE FROM class_students WHERE class_group_id = ?").run(input.classGroupId);
+    db.prepare("DELETE FROM class_groups WHERE id = ? AND organization_id = ?").run(
+      input.classGroupId,
+      input.organizationId,
+    );
+  });
+
+  transaction();
 }
 
 function studentBelongsToTeacher(studentId: number, teacherId: number): boolean {
