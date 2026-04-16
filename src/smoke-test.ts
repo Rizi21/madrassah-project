@@ -56,17 +56,46 @@ async function run() {
   assert.equal(assignStudent.headers.location, "/admin/dashboard?notice=Student%20assigned%20to%20class.");
 
   const pendingEmail = `pending-${uniqueSuffix}@makki-masjid.test`;
+  const additionalGuardianEmail = `guardian-${uniqueSuffix}@makki-masjid.test`;
   const createGuardian = await adminAgent
     .post("/admin/users")
     .type("form")
     .send({
-      name: "Smoke Test Guardian",
-      email: `guardian-${uniqueSuffix}@makki-masjid.test`,
+      name: `Smoke Test Guardian ${uniqueSuffix}`,
+      email: additionalGuardianEmail,
       role: "parent",
       password: "Password123!",
     });
   assert.equal(createGuardian.status, 302);
   assert.equal(createGuardian.headers.location, "/admin/dashboard?notice=User%20created.");
+
+  const adminWithGuardian = await adminAgent.get("/admin/dashboard");
+  const guardianIdMatch = adminWithGuardian.text.match(
+    new RegExp(`<option value="(\\d+)">Smoke Test Guardian ${uniqueSuffix}</option>`),
+  );
+  assert.ok(guardianIdMatch);
+
+  const linkGuardian = await adminAgent
+    .post(`/admin/students/${studentIdMatch[1]}/guardians`)
+    .type("form")
+    .send({
+      guardianUserId: guardianIdMatch[1],
+      relationship: "mother",
+    });
+  assert.equal(linkGuardian.status, 302);
+  assert.equal(linkGuardian.headers.location, "/admin/dashboard?notice=Guardian%20linked%20to%20student.");
+
+  const additionalGuardianAgent = request.agent(app);
+  const additionalGuardianLogin = await additionalGuardianAgent
+    .post("/login")
+    .type("form")
+    .send({ email: additionalGuardianEmail, password: "Password123!" });
+  assert.equal(additionalGuardianLogin.status, 302);
+  assert.equal(additionalGuardianLogin.headers.location.startsWith("/parent/dashboard"), true);
+
+  const additionalGuardianDashboard = await additionalGuardianAgent.get("/parent/dashboard");
+  assert.equal(additionalGuardianDashboard.status, 200);
+  assert.match(additionalGuardianDashboard.text, /Ibrahim Khan/);
 
   const signup = await request(app)
     .post("/signup")

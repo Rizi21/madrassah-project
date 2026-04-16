@@ -221,6 +221,38 @@
             </form>
           <% } %>
         </article>
+
+        <article class="form-card">
+          <h2>Link guardian to student</h2>
+          <p class="muted">Use this when one parent has multiple children, or when a child has more than one guardian.</p>
+          <% if (dashboard.guardians.length === 0 || dashboard.students.length === 0) { %>
+            <div class="banner error">Create at least one <%= tenant.terminology.parent.toLowerCase() %> and one student first.</div>
+          <% } else { %>
+            <form method="post" action="/admin/students/<%= dashboard.students[0].id %>/guardians" class="stack">
+              <label>
+                <span><%= tenant.terminology.student %></span>
+                <select name="studentIdProxy" required onchange="this.form.action='/admin/students/' + this.value + '/guardians'">
+                  <% dashboard.students.forEach((student) => { %>
+                    <option value="<%= student.id %>"><%= student.fullName %></option>
+                  <% }) %>
+                </select>
+              </label>
+              <label>
+                <span><%= tenant.terminology.parent %></span>
+                <select name="guardianUserId" required>
+                  <% dashboard.guardians.forEach((guardian) => { %>
+                    <option value="<%= guardian.id %>"><%= guardian.name %></option>
+                  <% }) %>
+                </select>
+              </label>
+              <label>
+                <span>Relationship</span>
+                <input type="text" name="relationship" value="guardian" required />
+              </label>
+              <button class="primary-button" type="submit">Link guardian</button>
+            </form>
+          <% } %>
+        </article>
       </section>
 
       <section class="forms-grid">
@@ -285,7 +317,7 @@
                 <th>Name</th>
                 <th>Classes</th>
                 <th><%= tenant.terminology.teacher %></th>
-                <th><%= tenant.terminology.parent %></th>
+                <th><%= tenant.terminology.parent %>s</th>
                 <th>Fee</th>
               </tr>
             </thead>
@@ -298,7 +330,7 @@
                   </td>
                   <td><%= student.classNames.length ? student.classNames.join(", ") : "Not assigned" %></td>
                   <td><%= student.teacherName %></td>
-                  <td><%= student.guardianName %></td>
+                  <td><%= student.guardianNames.length ? student.guardianNames.join(", ") : "No guardian linked" %></td>
                   <td><%= currencySymbol %><%= student.monthlyFee.toFixed(2) %></td>
                 </tr>
               <% }) %>
