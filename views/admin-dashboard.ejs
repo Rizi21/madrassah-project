@@ -45,6 +45,10 @@
           <span><%= tenant.terminology.teacher %>s</span>
           <strong><%= dashboard.teachers.length %></strong>
         </article>
+        <article class="summary-card">
+          <span>Classes</span>
+          <strong><%= dashboard.classGroups.length %></strong>
+        </article>
       </section>
 
       <% if (dashboard.pendingUsers.length > 0) { %>
@@ -163,6 +167,64 @@
 
       <section class="forms-grid">
         <article class="form-card">
+          <h2>Create class</h2>
+          <p class="muted">Create a class or group and assign one <%= tenant.terminology.teacher.toLowerCase() %> to it.</p>
+          <% if (dashboard.teachers.length === 0) { %>
+            <div class="banner error">Create at least one <%= tenant.terminology.teacher.toLowerCase() %> first.</div>
+          <% } else { %>
+            <form method="post" action="/admin/classes" class="stack">
+              <label>
+                <span>Class name</span>
+                <input type="text" name="name" placeholder="Weekday Hifz Group" required />
+              </label>
+              <label>
+                <span>Description</span>
+                <textarea name="description" rows="3" placeholder="Days, level, or notes for this class"></textarea>
+              </label>
+              <label>
+                <span><%= tenant.terminology.teacher %></span>
+                <select name="teacherUserId" required>
+                  <% dashboard.teachers.forEach((teacher) => { %>
+                    <option value="<%= teacher.id %>"><%= teacher.name %></option>
+                  <% }) %>
+                </select>
+              </label>
+              <button class="primary-button" type="submit">Create class</button>
+            </form>
+          <% } %>
+        </article>
+
+        <article class="form-card">
+          <h2>Assign student to class</h2>
+          <p class="muted">Use this to group students into classes after they have been registered.</p>
+          <% if (dashboard.classGroups.length === 0 || dashboard.students.length === 0) { %>
+            <div class="banner error">Create at least one class and one student first.</div>
+          <% } else { %>
+            <form method="post" action="/admin/classes/<%= dashboard.classGroups[0].id %>/students" class="stack" data-class-assignment-form>
+              <label>
+                <span>Class</span>
+                <select name="classGroupIdProxy" required onchange="this.form.action='/admin/classes/' + this.value + '/students'">
+                  <% dashboard.classGroups.forEach((classGroup) => { %>
+                    <option value="<%= classGroup.id %>"><%= classGroup.name %> · <%= classGroup.teacherName %></option>
+                  <% }) %>
+                </select>
+              </label>
+              <label>
+                <span><%= tenant.terminology.student %></span>
+                <select name="studentId" required>
+                  <% dashboard.students.forEach((student) => { %>
+                    <option value="<%= student.id %>"><%= student.fullName %></option>
+                  <% }) %>
+                </select>
+              </label>
+              <button class="primary-button" type="submit">Assign student</button>
+            </form>
+          <% } %>
+        </article>
+      </section>
+
+      <section class="forms-grid">
+        <article class="form-card">
           <h2>Users</h2>
           <div class="table-wrap">
             <table>
@@ -187,33 +249,62 @@
         </article>
 
         <article class="form-card">
-          <h2>Students</h2>
+          <h2>Classes</h2>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Name</th>
+                  <th>Class</th>
                   <th><%= tenant.terminology.teacher %></th>
-                  <th><%= tenant.terminology.parent %></th>
-                  <th>Fee</th>
+                  <th>Students</th>
                 </tr>
               </thead>
               <tbody>
-                <% dashboard.students.forEach((student) => { %>
+                <% dashboard.classGroups.forEach((classGroup) => { %>
                   <tr>
                     <td>
-                      <strong><%= student.fullName %></strong>
-                      <span class="table-subtext"><%= student.currentSurah %> · <%= student.currentAyah %></span>
+                      <strong><%= classGroup.name %></strong>
+                      <span class="table-subtext"><%= classGroup.description || "No description" %></span>
                     </td>
-                    <td><%= student.teacherName %></td>
-                    <td><%= student.guardianName %></td>
-                    <td><%= currencySymbol %><%= student.monthlyFee.toFixed(2) %></td>
+                    <td><%= classGroup.teacherName %></td>
+                    <td><%= classGroup.studentCount %></td>
                   </tr>
                 <% }) %>
               </tbody>
             </table>
           </div>
         </article>
+      </section>
+
+      <section class="form-card form-card-wide">
+        <h2>Students</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Classes</th>
+                <th><%= tenant.terminology.teacher %></th>
+                <th><%= tenant.terminology.parent %></th>
+                <th>Fee</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% dashboard.students.forEach((student) => { %>
+                <tr>
+                  <td>
+                    <strong><%= student.fullName %></strong>
+                    <span class="table-subtext"><%= student.currentSurah %> · <%= student.currentAyah %></span>
+                  </td>
+                  <td><%= student.classNames.length ? student.classNames.join(", ") : "Not assigned" %></td>
+                  <td><%= student.teacherName %></td>
+                  <td><%= student.guardianName %></td>
+                  <td><%= currencySymbol %><%= student.monthlyFee.toFixed(2) %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
   </body>

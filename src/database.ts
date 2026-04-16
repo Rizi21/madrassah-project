@@ -6,6 +6,7 @@ import Database from "better-sqlite3";
 
 import type {
   AdminDashboardData,
+  AdminClassGroupRow,
   AdminUserRow,
   AttendanceStatus,
   AuthUser,
@@ -164,6 +165,26 @@ export function initializeDatabase(tenantConfig: TenantConfig): void {
       FOREIGN KEY (student_id) REFERENCES students(id)
     );
 
+    CREATE TABLE IF NOT EXISTS class_groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      organization_id INTEGER NOT NULL,
+      teacher_user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (organization_id) REFERENCES organizations(id),
+      FOREIGN KEY (teacher_user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS class_students (
+      class_group_id INTEGER NOT NULL,
+      student_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (class_group_id, student_id),
+      FOREIGN KEY (class_group_id) REFERENCES class_groups(id),
+      FOREIGN KEY (student_id) REFERENCES students(id)
+    );
+
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
       token TEXT PRIMARY KEY,
       user_id INTEGER NOT NULL,
@@ -222,6 +243,14 @@ function seedDemoData(tenantConfig: TenantConfig): void {
   const insertFee = db.prepare(`
     INSERT INTO fees (student_id, fee_month, amount_due, status, paid_on, note)
     VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  const insertClassGroup = db.prepare(`
+    INSERT INTO class_groups (organization_id, teacher_user_id, name, description)
+    VALUES (?, ?, ?, ?)
+  `);
+  const insertClassStudent = db.prepare(`
+    INSERT OR IGNORE INTO class_students (class_group_id, student_id)
+    VALUES (?, ?)
   `);
 
   const configuredAdminPassword = bcrypt.hashSync(tenantConfig.demoUsers.admin.password, 10);
@@ -319,6 +348,18 @@ function seedDemoData(tenantConfig: TenantConfig): void {
   if (!firstStudentId || !secondStudentId) {
     return;
   }
+
+  const classGroupId = Number(
+    insertClassGroup.run(
+      organizationId,
+      teacherId,
+      "Weekday Hifz Group",
+      "Default seeded group for weekday Qur'an progress tracking.",
+    ).lastInsertRowid,
+  );
+
+  insertClassStudent.run(classGroupId, firstStudentId);
+  insertClassStudent.run(classGroupId, secondStudentId);
 
   [
     [firstStudentId, shiftDate(-4), "present"],
@@ -698,22 +739,54 @@ function getStudentSummary(studentId: number): StudentSummary {
   return summarizeInsights(strengths, weaknesses);
 }
 
+function getStudentClassNames(studentId: number): string[] {
+  const rows = db
+    .prepare(`
+      SELECT cg.name
+      FROM class_students cs
+      INNER JOIN class_groups cg ON cg.id = cs.class_group_id
+      WHERE cs.student_id = ?
+      ORDER BY cg.name
+    `)
+    .all(studentId) as Array<{ name: string }>;
+
+  return rows.map((row) => row.name);
+}
+
 export function getTeacherDashboardData(teacherId: number, organizationId: number): TeacherDashboardData {
   const organization = getOrganizationDetails(organizationId);
-  const studentRows = db
+  const classGroups = db
     .prepare(`
       SELECT
-        id,
-        first_name AS firstName,
-        last_name AS lastName,
-        current_surah AS currentSurah,
-        current_ayah AS currentAyah,
-        monthly_fee AS monthlyFee
-      FROM students
-      WHERE teacher_user_id = ?
-      ORDER BY first_name, last_name
+        cg.id,
+        cg.name,
+        cg.description,
+        COUNT(cs.student_id) AS studentCount
+      FROM class_groups cg
+      LEFT JOIN class_students cs ON cs.class_group_id = cg.id
+      WHERE cg.organization_id = ? AND cg.teacher_user_id = ?
+      GROUP BY cg.id
+      ORDER BY cg.name
     `)
-    .all(teacherId) as Array<{
+    .all(organizationId, teacherId) as TeacherDashboardData["classGroups"];
+
+  const studentRows = db
+    .prepare(`
+      SELECT DISTINCT
+        s.id,
+        s.first_name AS firstName,
+        s.last_name AS lastName,
+        s.current_surah AS currentSurah,
+        s.current_ayah AS currentAyah,
+        s.monthly_fee AS monthlyFee
+      FROM students s
+      LEFT JOIN class_students cs ON cs.student_id = s.id
+      LEFT JOIN class_groups cg ON cg.id = cs.class_group_id
+      WHERE s.organization_id = ?
+        AND (s.teacher_user_id = ? OR cg.teacher_user_id = ?)
+      ORDER BY s.first_name, s.last_name
+    `)
+    .all(organizationId, teacherId, teacherId) as Array<{
     id: number;
     firstName: string;
     lastName: string;
@@ -739,6 +812,7 @@ export function getTeacherDashboardData(teacherId: number, organizationId: numbe
     return {
       id: student.id,
       fullName: `${student.firstName} ${student.lastName}`,
+      classNames: getStudentClassNames(student.id),
       currentSurah: student.currentSurah,
       currentAyah: student.currentAyah,
       monthlyFee: student.monthlyFee,
@@ -755,6 +829,7 @@ export function getTeacherDashboardData(teacherId: number, organizationId: numbe
   return {
     organizationName: organization.name,
     currency: organization.currency,
+    classGroups,
     students,
   };
 }
@@ -861,6 +936,28 @@ export function getAdminDashboardData(organizationId: number): AdminDashboardDat
     `)
     .all(organizationId) as AdminDashboardData["students"];
 
+  const classGroups = db
+    .prepare(`
+      SELECT
+        cg.id,
+        cg.name,
+        cg.description,
+        teacher.name AS teacherName,
+        COUNT(cs.student_id) AS studentCount
+      FROM class_groups cg
+      INNER JOIN users teacher ON teacher.id = cg.teacher_user_id
+      LEFT JOIN class_students cs ON cs.class_group_id = cg.id
+      WHERE cg.organization_id = ?
+      GROUP BY cg.id
+      ORDER BY cg.name
+    `)
+    .all(organizationId) as AdminClassGroupRow[];
+
+  const studentsWithClasses = students.map((student) => ({
+    ...student,
+    classNames: getStudentClassNames(student.id),
+  }));
+
   return {
     organizationName: organization.name,
     currency: organization.currency,
@@ -868,7 +965,8 @@ export function getAdminDashboardData(organizationId: number): AdminDashboardDat
     pendingUsers: users.filter((user) => user.role === "pending"),
     teachers: users.filter((user) => user.role === "teacher"),
     guardians: users.filter((user) => user.role === "parent"),
-    students,
+    students: studentsWithClasses,
+    classGroups,
   };
 }
 
@@ -953,14 +1051,69 @@ export function createStudent(input: {
   );
 }
 
-function studentBelongsToTeacher(studentId: number, teacherId: number): boolean {
-  const row = db
+export function createClassGroup(input: {
+  organizationId: number;
+  teacherUserId: number;
+  name: string;
+  description: string;
+}): void {
+  if (!userBelongsToOrganization(input.teacherUserId, input.organizationId, "teacher")) {
+    throw new Error("Selected teacher does not belong to this masjid.");
+  }
+
+  db.prepare(`
+    INSERT INTO class_groups (organization_id, teacher_user_id, name, description)
+    VALUES (?, ?, ?, ?)
+  `).run(input.organizationId, input.teacherUserId, input.name, input.description);
+}
+
+export function assignStudentToClass(input: {
+  organizationId: number;
+  classGroupId: number;
+  studentId: number;
+}): void {
+  const classGroup = db
+    .prepare(`
+      SELECT id
+      FROM class_groups
+      WHERE id = ? AND organization_id = ?
+    `)
+    .get(input.classGroupId, input.organizationId) as { id: number } | undefined;
+
+  if (!classGroup) {
+    throw new Error("Class was not found for this masjid.");
+  }
+
+  const student = db
     .prepare(`
       SELECT id
       FROM students
-      WHERE id = ? AND teacher_user_id = ?
+      WHERE id = ? AND organization_id = ?
     `)
-    .get(studentId, teacherId) as { id: number } | undefined;
+    .get(input.studentId, input.organizationId) as { id: number } | undefined;
+
+  if (!student) {
+    throw new Error("Student was not found for this masjid.");
+  }
+
+  db.prepare(`
+    INSERT OR IGNORE INTO class_students (class_group_id, student_id)
+    VALUES (?, ?)
+  `).run(input.classGroupId, input.studentId);
+}
+
+function studentBelongsToTeacher(studentId: number, teacherId: number): boolean {
+  const row = db
+    .prepare(`
+      SELECT s.id
+      FROM students s
+      LEFT JOIN class_students cs ON cs.student_id = s.id
+      LEFT JOIN class_groups cg ON cg.id = cs.class_group_id
+      WHERE s.id = ?
+        AND (s.teacher_user_id = ? OR cg.teacher_user_id = ?)
+      LIMIT 1
+    `)
+    .get(studentId, teacherId, teacherId) as { id: number } | undefined;
 
   return Boolean(row);
 }

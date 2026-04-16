@@ -20,6 +20,7 @@ export interface StudentSummary {
 export interface TeacherStudentCard extends StudentSummary {
   id: number;
   fullName: string;
+  classNames: string[];
   currentSurah: string;
   currentAyah: string;
   monthlyFee: number;
@@ -40,7 +41,15 @@ export interface TeacherStudentCard extends StudentSummary {
 export interface TeacherDashboardData {
   organizationName: string;
   currency: string;
+  classGroups: TeacherClassGroupRow[];
   students: TeacherStudentCard[];
+}
+
+export interface TeacherClassGroupRow {
+  id: number;
+  name: string;
+  description: string;
+  studentCount: number;
 }
 
 export interface ParentStudentView extends StudentSummary {
@@ -88,11 +97,20 @@ export interface AdminUserRow {
 export interface AdminStudentRow {
   id: number;
   fullName: string;
+  classNames: string[];
   currentSurah: string;
   currentAyah: string;
   monthlyFee: number;
   teacherName: string;
   guardianName: string;
+}
+
+export interface AdminClassGroupRow {
+  id: number;
+  name: string;
+  description: string;
+  teacherName: string;
+  studentCount: number;
 }
 
 export interface AdminDashboardData {
@@ -103,4 +121,5 @@ export interface AdminDashboardData {
   teachers: AdminUserRow[];
   guardians: AdminUserRow[];
   students: AdminStudentRow[];
+  classGroups: AdminClassGroupRow[];
 }

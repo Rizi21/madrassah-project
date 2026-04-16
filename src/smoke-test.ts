@@ -26,6 +26,35 @@ async function run() {
   assert.match(adminDashboard.text, /Ustadh Soban/);
 
   const uniqueSuffix = Date.now();
+  const teacherIdMatch = adminDashboard.text.match(/<option value="(\d+)">Ustadh Soban<\/option>/);
+  assert.ok(teacherIdMatch);
+
+  const createClass = await adminAgent
+    .post("/admin/classes")
+    .type("form")
+    .send({
+      name: `Smoke Class ${uniqueSuffix}`,
+      description: "Smoke test class group",
+      teacherUserId: teacherIdMatch[1],
+    });
+  assert.equal(createClass.status, 302);
+  assert.equal(createClass.headers.location, "/admin/dashboard?notice=Class%20created.");
+
+  const adminWithClass = await adminAgent.get("/admin/dashboard");
+  const classIdMatch = adminWithClass.text.match(
+    new RegExp(`<option value="(\\d+)">Smoke Class ${uniqueSuffix} · Ustadh Soban</option>`),
+  );
+  const studentIdMatch = adminWithClass.text.match(/<option value="(\d+)">Ibrahim Khan<\/option>/);
+  assert.ok(classIdMatch);
+  assert.ok(studentIdMatch);
+
+  const assignStudent = await adminAgent
+    .post(`/admin/classes/${classIdMatch[1]}/students`)
+    .type("form")
+    .send({ studentId: studentIdMatch[1] });
+  assert.equal(assignStudent.status, 302);
+  assert.equal(assignStudent.headers.location, "/admin/dashboard?notice=Student%20assigned%20to%20class.");
+
   const pendingEmail = `pending-${uniqueSuffix}@makki-masjid.test`;
   const createGuardian = await adminAgent
     .post("/admin/users")
@@ -129,6 +158,7 @@ async function run() {
   assert.equal(teacherDashboard.status, 200);
   assert.match(teacherDashboard.text, /Ustadh Portal/);
   assert.match(teacherDashboard.text, /Ibrahim Khan/);
+  assert.match(teacherDashboard.text, new RegExp(`Smoke Class ${uniqueSuffix}`));
 
   const parentLogin = await parentAgent
     .post("/login")
